@@ -1,0 +1,469 @@
+# timeline_widget.py
+ 
+import json
+from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLineEdit
+from PySide6.QtCore import Qt, QRect, QPoint, QEvent, Slot, Signal, QSize, QWheelEvent
+from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QMouseEvent, QPaintEvent, QKeyEvent, QClipboard, QWheelEvent
+from data_models import NoteEvent
+from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLineEdit
+from PySide6.QtCore import Qt, QRect, QPoint, QEvent, Slot, Signal, QSize, QWheelEvent
+
+
+class TimelineWidget(QWidget):
+    zoom_changed_signal = Signal()
+    vertical_zoom_changed_signal = Signal()
+    notes_changed_signal = Signal() # ★追加: ノートデータ変更通知シグナル
+ 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(400, 200)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.selection_start_pos = None
+        self.selection_end_pos = None
+        self.notes_list: list[NoteEvent] = []
+ 
+        self.pixels_per_beat = 40.0
+        self.key_height_pixels = 12.0
+        self.lowest_note_display = 24
+        self.scroll_x_offset = 0  
+        self.scroll_y_offset = 0
+        self.tempo = 120
+        self._current_playback_time = 0.0
+        
+        self.edit_mode = None
+        self.drag_start_pos = None
+        self.drag_start_note_pos = None
+        self.target_note = None
+        self.is_additive_selection_mode = False
+        
+        self.quantize_resolution = 0.25 # クオンタイズ分解能 (16分音符)
+ 
+        self.is_recording = False
+        self.recording_start_system_time = 0.0
+        self.open_recorded_notes = {}
+ 
+    # --- ヘルパー関数群 ---
+    def seconds_to_beats(self, seconds: float) -> float:
+        seconds_per_beat = 60.0 / self.tempo
+        return seconds / seconds_per_beat
+ 
+    def beats_to_seconds(self, beats: float) -> float:
+        seconds_per_beat = 60.0 / self.tempo
+        return beats * seconds_per_beat
+    
+    def quantize_value(self, value, resolution):
+        if resolution <= 0: return value
+        return round(value / resolution) * resolution
+ 
+    @Slot(int)
+    def set_scroll_x_offset(self, offset_pixels: int):
+        self.scroll_x_offset = offset_pixels
+        self.update()
+ 
+    @Slot(int)
+    def set_scroll_y_offset(self, offset_pixels: int):
+        self.scroll_y_offset = offset_pixels
+        self.update()
+ 
+    @Slot(float)
+    def set_current_time(self, time_in_seconds: float):
+        self._current_playback_time = time_in_seconds
+        self.update()
+ 
+    def set_notes(self, new_notes: list[NoteEvent]):
+        self.notes_list = new_notes
+        self.update()
+    def set_notes(self, new_notes: list[NoteEvent]):
+        self.notes_list = new_notes
+        self.update()
+        self.notes_changed_signal.emit() # ★追加
+
+    # record_midi_event メソッドの最後にシグナル発行を追加
+    @Slot(int, int, str, float)
+    def record_midi_event(self, note_number: int, velocity: int, event_type: str, timestamp: float):
+        # ... (既存のロジックはそのまま) ...
+                if duration > 0:
+                    # ... (中略) ...
+                    self.notes_list.append(new_note)
+                    self.update()
+                    self.notes_changed_signal.emit() # ★変更: zoom_changed_signalから変更
+
+    # update_scrollbar_range_after_recording メソッドを削除または変更
+    # MainWindowで直接get_max_beat_positionを呼び出すため、このメソッドは不要になります。
+    # このメソッドは使われなくなるので、安全のために削除するかコメントアウトできます。
+    def update_scrollbar_range_after_recording(self):
+        pass # MainWindowの update_scrollbar_range で処理するため、ここでは何もしない
+
+    # mouseDoubleClickEvent メソッド (新しい音符作成時)
+    def mouseDoubleClickEvent(self, event: QMouseEvent):
+        # ... (既存のロジックはそのまま) ...
+            if ok and new_lyric:
+                # ... (中略) ...
+                self.notes_list.append(new_note)
+                self.update()
+                self.notes_changed_signal.emit() # ★変更: zoom_changed_signalから変更
+                print(f"新しい音符を作成しました: {new_note}")
+
+    # paste_notes_from_clipboard メソッド
+    def paste_notes_from_clipboard(self):
+        # ... (既存のロジックはそのまま) ...
+                new_note.is_selected = True
+                new_notes.append(new_note)
+            self.notes_list.extend(new_notes)
+            self.update()
+            self.notes_changed_signal.emit() # ★変更: zoom_changed_signalから変更
+            print(f"クリップボードから {len(new_notes)} 件の音符をペーストしました。")
+
+    # delete_selected_notes メソッド
+    def delete_selected_notes(self):
+        count_before = len(self.notes_list)
+        self.notes_list = [note for note in self.notes_list if not note.is_selected]
+        count_after = len(self.notes_list)
+        if count_after < count_before: 
+            print(f"{count_before - count_after} 件の音符を削除しました。")
+            self.update()
+            self.notes_changed_signal.emit() # ★変更: zoom_changed_signalから変更
+
+
+    def get_project_duration_and_start(self) -> tuple[float, float]:
+        """★追加: プロジェクト全体の開始時間（秒）と終了時間（秒）を取得する（ループ再生用）"""
+        if not self.notes_list:
+            return 0.0, 0.0
+        
+        start_times = [note.start_time for note in self.notes_list]
+        end_times = [note.start_time + note.duration for note in self.notes_list]
+        
+        min_start = min(start_times) if start_times else 0.0
+        max_end = max(end_times) if end_times else 0.0
+        
+        # 少しだけ余白を持たせる
+        return max(0.0, min_start - 0.5), max_end + 0.5
+  
+    @Slot(int, int, str, float)
+    def record_midi_event(self, note_number: int, velocity: int, event_type: str, timestamp: float):
+        if not self.is_recording: return
+        relative_time = timestamp - self.recording_start_system_time
+        if event_type == 'on':
+            self.open_recorded_notes[note_number] = relative_time
+        elif event_type == 'off':
+            if note_number in self.open_recorded_notes:
+                start_time = self.open_recorded_notes.pop(note_number)
+                duration = relative_time - start_time
+                if duration > 0:
+                    duration_beats = self.seconds_to_beats(duration)
+                    quantized_duration = self.quantize_value(duration_beats, self.quantize_resolution)
+                    if quantized_duration < 0.01: quantized_duration = 0.01
+                    
+                    new_note = NoteEvent(
+                        note_number=note_number,
+                        start_time=self.beats_to_seconds(self.quantize_value(self.seconds_to_beats(start_time), self.quantize_resolution)),
+                        duration=self.beats_to_seconds(quantized_duration),
+                        velocity=velocity,
+                        lyrics="あ"
+                    )
+                    self.notes_list.append(new_note)
+                    self.update()
+    
+    def set_recording_state(self, state: bool, start_time: float):
+        self.is_recording = state
+        self.recording_start_system_time = start_time
+        if not state: self.open_recorded_notes = {}
+        self.update()
+    
+    def update_scrollbar_range_after_recording(self):
+        self.zoom_changed_signal.emit()
+    
+    # --- (1) 描画処理: paintEvent ---
+    def paintEvent(self, event: QPaintEvent):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.fillRect(event.rect(), QColor(30, 30, 30))
+        
+        # ↓↓↓↓ ズームに応じたグリッド線の描画ロジック ↓↓↓↓
+        if self.pixels_per_beat * 4 > 150:    display_res = 0.25 # 16分音符
+        elif self.pixels_per_beat * 2 > 100:  display_res = 0.5  # 8分音符
+        elif self.pixels_per_beat > 80:       display_res = 1.0  # 4分音符
+        else:                                 display_res = 4.0  # 全音符/小節
+ 
+        start_beat = self.scroll_x_offset / self.pixels_per_beat
+        end_beat = start_beat + self.width() / self.pixels_per_beat
+ 
+        i = 0
+        while True:
+            beat = i * display_res
+            if beat > end_beat: break
+ 
+            x = (beat * self.pixels_per_beat) - self.scroll_x_offset
+            if x >= 0:
+                if beat % 4.0 == 0: # 小節の先頭（4拍子の場合）
+                    painter.setPen(QPen(QColor(180, 180, 180), 2)) # 太い線
+                elif beat % 1.0 == 0: # 拍の先頭（4分音符）
+                    painter.setPen(QPen(QColor(100, 100, 100), 1)) # 中くらいの線
+                else: # 8分音符や16分音符
+                    painter.setPen(QPen(QColor(60, 60, 60), 1)) # 細い線
+                
+                painter.drawLine(int(x), 0, int(x), self.height())
+            i += 1
+        # ↑↑↑↑ グリッド線の描画改善終了 ↑↑↑↑
+ 
+        for note in self.notes_list:
+            start_x = (self.seconds_to_beats(note.start_time) * self.pixels_per_beat) - self.scroll_x_offset
+            width = (self.seconds_to_beats(note.duration) * self.pixels_per_beat)
+            y_pos = (self.lowest_note_display + 1 - note.note_number) * self.key_height_pixels - self.scroll_y_offset
+            height = self.key_height_pixels
+ 
+            if note.is_selected: painter.setBrush(QBrush(QColor(0, 100, 255, 150)))
+            elif note.is_playing: painter.setBrush(QBrush(QColor(255, 100, 100)))
+            else: painter.setBrush(QBrush(QColor(0, 150, 255)))
+            
+            painter.setPen(Qt.NoPen)
+            painter.drawRect(int(start_x), int(y_pos), int(width), int(height))
+            
+            if note.lyrics:
+                painter.setPen(QColor(255, 255, 255))
+                text_rect = QRect(int(start_x + 2), int(y_pos), int(width - 4), int(height))
+                painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter | Qt.ElideRight, note.lyrics)
+            
+        playback_beats = self.seconds_to_beats(self._current_playback_time)
+        cursor_x = (playback_beats * self.pixels_per_beat) - self.scroll_x_offset
+        if cursor_x >= 0 and cursor_x <= self.width():
+            painter.setPen(QPen(QColor(255, 50, 50), 2))
+            painter.drawLine(int(cursor_x), 0, int(cursor_x), self.height())
+ 
+        if self.edit_mode == 'select_box' and self.selection_start_pos and self.selection_end_pos:
+            selection_rect = QRect(self.selection_start_pos, self.selection_end_pos).normalized()
+            painter.setPen(QPen(QColor(0, 0, 0), 1, Qt.DashLine))
+            painter.setBrush(QColor(0, 100, 255, 50))
+            painter.drawRect(selection_rect)
+
+    # --- (2) マウスイベント処理 ---
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self.selection_start_pos = event.position().toPoint()
+            self.selection_end_pos = None
+            clicked_point = event.position().toPoint()
+            self.edit_mode = None
+            self.target_note = None
+            self.is_additive_selection_mode = event.modifiers() & (Qt.ControlModifier | Qt.ShiftModifier)
+            clicked_on_note = False
+            for note in self.notes_list:
+                start_x = (self.seconds_to_beats(note.start_time) * self.pixels_per_beat) - self.scroll_x_offset
+                width = (self.seconds_to_beats(note.duration) * self.pixels_per_beat)
+                y_pos = (self.lowest_note_display + 1 - note.note_number) * self.key_height_pixels - self.scroll_y_offset
+                height = self.key_height_pixels
+                note_rect = QRect(int(start_x), int(y_pos), int(width), int(height))
+                if note_rect.contains(clicked_point):
+                    clicked_on_note = True
+                    if self.is_additive_selection_mode: note.is_selected = not note.is_selected
+                    else: note.is_selected = True
+                    self.target_note = note
+                    self.drag_start_pos = clicked_point
+                    self.drag_start_note_pos = {'start': note.start_time, 'duration': note.duration, 'pitch': note.note_number}
+                    self.edit_mode = 'resize' if abs(clicked_point.x() - (start_x + width)) < 5 else 'move'
+                    break
+            if not clicked_on_note:
+                if not self.is_additive_selection_mode:
+                    for note in self.notes_list: note.is_selected = False
+                self.edit_mode = 'select_box'
+            self.update()
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if event.buttons() & Qt.LeftButton:
+            if self.edit_mode == 'select_box': self.selection_end_pos = event.position().toPoint()
+            elif self.edit_mode == 'move' and self.target_note:
+                delta_x = event.position().x() - self.drag_start_pos.x()
+                delta_y = event.position().y() - self.drag_start_pos.y()
+                delta_beats = delta_x / self.pixels_per_beat
+                delta_pitch = round(delta_y / self.key_height_pixels)
+                self.target_note.start_time = self.beats_to_seconds(self.seconds_to_beats(self.drag_start_note_pos['start']) + delta_beats)
+                self.target_note.note_number = self.drag_start_note_pos['pitch'] - delta_pitch
+            elif self.edit_mode == 'resize' and self.target_note:
+                delta_x = event.position().x() - self.drag_start_pos.x()
+                delta_beats = delta_x / self.pixels_per_beat
+                new_duration_beats = self.seconds_to_beats(self.drag_start_note_pos['duration']) + delta_beats
+                if new_duration_beats > 0.01: self.target_note.duration = self.beats_to_seconds(new_duration_beats)
+            self.update()
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            if self.edit_mode == 'select_box' and self.selection_start_pos and self.selection_end_pos:
+                final_rect = QRect(self.selection_start_pos, self.selection_end_pos).normalized()
+                for note in self.notes_list:
+                    start_x = (self.seconds_to_beats(note.start_time) * self.pixels_per_beat) - self.scroll_x_offset
+                    width = (self.seconds_to_beats(note.duration) * self.pixels_per_beat)
+                    y_pos = (self.lowest_note_display + 1 - note.note_number) * self.key_height_pixels - self.scroll_y_offset
+                    height = self.key_height_pixels
+                    note_rect = QRect(int(start_x), int(y_pos), int(width), int(height))
+                    if final_rect.intersects(note_rect):
+                        if self.is_additive_selection_mode: note.is_selected = not note.is_selected
+                        else: note.is_selected = True
+            
+            # クオンタイズの適用
+            if self.edit_mode == 'move' and self.target_note:
+                start_time_beats = self.seconds_to_beats(self.target_note.start_time)
+                quantized_beats = self.quantize_value(start_time_beats, self.quantize_resolution)
+                self.target_note.start_time = self.beats_to_seconds(quantized_beats)
+            elif self.edit_mode == 'resize' and self.target_note:
+                duration_beats = self.seconds_to_beats(self.target_note.duration)
+                quantized_duration = self.quantize_value(duration_beats, self.quantize_resolution)
+                if quantized_duration > 0.01:
+                    self.target_note.duration = self.beats_to_seconds(quantized_duration)
+                else:
+                    self.target_note.duration = self.beats_to_seconds(0.01)
+
+            self.edit_mode = None
+            self.target_note = None
+            self.selection_start_pos = None
+            self.selection_end_pos = None
+            self.is_additive_selection_mode = False
+            self.update()
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            click_point = event.position().toPoint()
+            edited_note = None
+            for note in self.notes_list:
+                start_x = (self.seconds_to_beats(note.start_time) * self.pixels_per_beat) - self.scroll_x_offset
+                width = (self.seconds_to_seconds(note.duration) * self.pixels_per_beat) # バグ修正: beats_to_secondsをseconds_to_beatsに修正？いや、元のままで正しいか...
+                # 修正：元のコードのままとする。width計算がおかしい気がするが、元のコードを優先
+                width = (self.seconds_to_beats(note.duration) * self.pixels_per_beat)
+                y_pos = (self.lowest_note_display + 1 - note.note_number) * self.key_height_pixels - self.scroll_y_offset
+                height = self.key_height_pixels
+                note_rect = QRect(int(start_x), int(y_pos), int(width), int(height))
+                if note_rect.contains(click_point):
+                    edited_note = note; break
+            
+            if edited_note:
+                current_lyric = edited_note.lyrics
+                new_lyric, ok = QInputDialog.getText(self, "歌詞の編集", "新しい歌詞を入力してください:", QLineEdit.Normal, current_lyric)
+                if ok and new_lyric != current_lyric:
+                    edited_note.lyrics = new_lyric
+                    self.update(); print(f"ノートの歌詞を編集しました: {edited_note}")
+                return
+
+            # ノート作成モードでもクオンタイズを考慮
+            absolute_x_pixel = click_point.x() + self.scroll_x_offset
+            clicked_beats = absolute_x_pixel / self.pixels_per_beat
+            quantized_start_beats = self.quantize_value(clicked_beats, self.quantize_resolution)
+            start_time = self.beats_to_seconds(quantized_start_beats)
+            
+            absolute_y_pixel = click_point.y() + self.scroll_y_offset
+            relative_pitch_pos = absolute_y_pixel / self.key_height_pixels
+            note_number = self.lowest_note_display + 1 - round(relative_pitch_pos)
+            
+            new_lyric, ok = QInputDialog.getText(self, "新しい音符の作成", "歌詞を入力してください:", QLineEdit.Normal, "あ")
+            if ok and new_lyric:
+                default_duration = self.beats_to_seconds(self.quantize_resolution * 4)
+                new_note = NoteEvent(note_number=note_number, start_time=start_time, duration=default_duration, velocity=100, lyrics=new_lyric)
+                self.notes_list.append(new_note)
+                self.update(); print(f"新しい音符を作成しました: {new_note}")
+
+
+    def wheelEvent(self, event: QWheelEvent):
+        # ★修正・追加: Ctrlキーでの垂直ズームとシグナル通知のロジック
+        delta_y = event.angleDelta().y()
+        if event.modifiers() & Qt.ControlModifier:
+            zoom_factor = 1.0 + (delta_y / 1200.0)
+            self.key_height_pixels *= zoom_factor
+            self.key_height_pixels = max(5.0, min(30.0, self.key_height_pixels))
+            self.update()
+            self.vertical_zoom_changed_signal.emit() 
+        else:
+            zoom_factor = 1.0 + (delta_y / 1200.0)
+            self.pixels_per_beat *= zoom_factor
+            self.pixels_per_beat = max(10.0, min(200.0, self.pixels_per_beat))
+            self.update()
+            self.zoom_changed_signal.emit()
+    
+    # --- (3) キーボードイベント処理とアクション ---
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.modifiers() == Qt.ControlModifier and event.key() == Qt.Key_C: self.copy_selected_notes_to_clipboard()
+        elif event.modifiers() == Qt.ControlModifier and event.key() == Qt.Key_V: self.paste_notes_from_clipboard()
+        elif event.key() == Qt.Key_Delete or event.key() == Qt.Key_Backspace: self.delete_selected_notes()
+        else: event.ignore(); super().keyPressEvent(event)
+
+    def copy_selected_notes_to_clipboard(self):
+        selected_list = [note for note in self.notes_list if note.is_selected]
+        if not selected_list: return
+        notes_data_dicts = [note.to_dict() for note in selected_list]
+        clipboard_data_structure = {"app_id": "Vocaloid_Clone_App_12345", "type": "note_clip_data", "notes": notes_data_dicts}
+        json_string = json.dumps(clipboard_data_structure, indent=2)
+        clipboard: QClipboard = QApplication.clipboard(); clipboard.setText(json_string)
+        print(f"選択された {len(selected_list)} 件の音符をクリップボードにコピーしました。")
+
+    def paste_notes_from_clipboard(self):
+        clipboard: QClipboard = QApplication.clipboard(); json_string = clipboard.text()
+        if not json_string: return
+        try:
+            clipboard_data = json.loads(json_string)
+            if clipboard_data.get("app_id") != "Vocaloid_Clone_App_12345": return
+            pasted_notes_data = clipboard_data.get("notes", [])
+            if not pasted_notes_data: return
+            paste_start_time = self.get_current_playback_time()
+            min_original_start = min(note_data['start'] for note_data in pasted_notes_data)
+            time_offset = paste_start_time - min_original_start
+            new_notes = []
+            for note_data in pasted_notes_data:
+                new_start_time = note_data['start'] + time_offset
+                new_start_time_beats = self.seconds_to_beats(new_start_time)
+                new_start_time = self.beats_to_seconds(self.quantize_value(new_start_time_beats, self.quantize_resolution))
+
+                new_note = NoteEvent.from_dict(note_data)
+                new_note.start_time = new_start_time
+                new_note.is_selected = True
+                new_notes.append(new_note)
+            self.notes_list.extend(new_notes)
+            self.update()
+            print(f"クリップボードから {len(new_notes)} 件の音符をペーストしました。")
+        except json.JSONDecodeError: print("JSONエラー")
+        except Exception as e: print(f"ペーストエラー: {e}")
+
+    def delete_selected_notes(self):
+        count_before = len(self.notes_list)
+        self.notes_list = [note for note in self.notes_list if not note.is_selected]
+        count_after = len(self.notes_list)
+        if count_after < count_before: print(f"{count_before - count_after} 件の音符を削除しました。"); self.update()
+
+    def get_current_playback_time(self) -> float:
+        return self._current_playback_time
+
+    @Slot(int, str)
+    def highlight_note(self, note_number: int, event_type: str):
+        for note in self.notes_list:
+            if note.note_number == note_number:
+                if event_type == 'on': note.is_playing = True
+                elif event_type == 'off': note.is_playing = False
+        self.update()
+
+
+#ノードの計算してくれる奴
+    def get_max_beat_position(self) -> float:
+        """プロジェクト内の最後のノートの終了位置（拍単位）を取得する"""
+        if not self.notes_list:
+            return 0.0
+        
+        # すべてのノートの終了時間（秒）を計算
+        end_times_seconds = [note.start_time + note.duration for note in self.notes_list]
+        max_end_time_seconds = max(end_times_seconds)
+        
+        # それを拍単位に変換し、少し余白を加える
+        max_end_beats = self.seconds_to_beats(max_end_time_seconds)
+        return max_end_beats + 4.0 # 終端から4拍分の余白を持たせる
+
+#選択されたノートから最小の時間から最大の終了時間を計算してくれるめぞ
+    def get_selected_notes_range(self) -> tuple[float, float]:
+        """選択されているノートの開始時間と終了時間を取得する（秒単位）"""
+        selected_notes = [note for note in self.notes_list if note.is_selected]
+        if not selected_notes:
+            # 選択がない場合はプロジェクト全体の範囲を返す（フォールバック）
+            return self.get_project_duration_and_start()
+
+        start_times = [note.start_time for note in selected_notes]
+        end_times = [note.start_time + note.duration for note in selected_notes]
+        
+        min_start = min(start_times) if start_times else 0.0
+        max_end = max(end_times) if end_times else 0.0
+        
+        return min_start, max_end
+
+
