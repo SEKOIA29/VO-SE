@@ -11,6 +11,10 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QMenu, QVBoxL
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtCore import Slot, Qt, QTimer, Signal
 
+#合成音声系
+from vo_se_engine import VO_SE_Engine # エンジンのインポート
+import numpy as np 
+
 
 from timeline_widget import TimelineWidget
 from keyboard_sidebar_widget import KeyboardSidebarWidget
@@ -35,6 +39,22 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.setWindowTitle("統合MIDIアプリケーション")
         self.setGeometry(100, 100, 700, 400) # 幅を少し広げた
+
+        
+        self.vo_se_engine = VO_SE_Engine()       
+　　　 # キャラクター選択UIの追加
+        self.character_selector = QComboBox(self)
+        for char_id, char_info in self.vocal_engine.characters.items():
+            self.character_selector.addItem(char_info.name, userData=char_id)
+        self.character_selector.currentIndexChanged.connect(self.on_character_changed)
+        
+        # レイアウトにセレクターを追加
+        button_layout.addWidget(self.character_selector) # 例えば open_button の隣など
+
+        # 初期キャラクターの設定
+        self.vo_se_engine.set_active_character("char_001")
+
+
 
         # --- UIコンポーネントの初期化 ---
         self.status_label = QLabel("アプリケーション起動中...", self)
@@ -189,23 +209,90 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self.copy_action)
         edit_menu.addAction(self.paste_action)
 
+  
+
     @Slot()
     def on_play_pause_toggled(self):
         """再生/停止ボタンのハンドラ"""
+        
+        # ----------------------------------------
+        # 再生中の場合: 停止処理を実行
+        # ----------------------------------------
         if self.is_playing:
             self.is_playing = False
             self.playback_timer.stop()
             self.play_button.setText("再生/停止")
             self.status_label.setText("再生停止しました。")
+            self.playing_notes = {} # 再生管理リストをクリア
+
+            # pyaudioストリームをフラッシュし、停止中にする
+            if self.vo_se_engine and hasattr(self.vo_se_engine, 'stream') and self.vo_se_engine.stream.is_active():
+                 # TODO: エンジン内で再生中のスレッドも停止させる仕組みが必要
+                 self.vo_se_engine.stream.stop_stream()
+                 # self.vo_se_engine.stream.start_stream() # 再開は再生直前で良い
+            
+
+        # ----------------------------------------
+        # 停止中の場合: 音声生成と再生開始処理を実行
+        # ----------------------------------------
         else:
+            # 録音中であれば、先に録音を停止する
             if self.is_recording:
                 self.on_record_toggled()
             
-            self.is_playing = True
-            self.start_time_real = time.time() - self.current_playback_time
-            self.playback_timer.start()
-            self.play_button.setText("■ 再生中 (停止)")
-            self.status_label.setText("再生開始しました。")
+            # --- 再生範囲の取得 ---
+            if self.is_looping_selection and self.timeline_widget.get_selected_notes():
+                 start_time, end_time = self.timeline_widget.get_selected_notes_range()
+            else:
+                 # 選択範囲がない場合や通常ループの場合、プロジェクト全体の範囲を取得
+                 start_time, end_time = self.timeline_widget.get_project_duration_and_start()
+
+            if start_time >= end_time:
+                 self.status_label.setText("ノートが存在しないため再生できません。")
+                 return
+
+            notes = self.timeline_widget.notes_list
+            pitch = self.pitch_data # MainWindow が保持しているピッチデータ
+            
+            try:
+                self.status_label.setText("音声生成中...お待ちください。")
+                QApplication.processEvents() # UIを更新してユーザーにメッセージを表示
+
+                # --- ここでエンジンを呼び出して音声を生成（時間がかかる処理） ---
+                audio_track = self.vo_se_engine.synthesize_track(
+                    notes,         
+                    pitch,         
+                    start_time, 
+                    end_time
+                )
+                
+                # --- 生成後にオーディオ再生とGUIの再生状態を開始 ---
+                
+                # エンジンのストリームが停止中であれば再開する
+                if hasattr(self.vo_se_engine, 'stream') and not self.vo_se_engine.stream.is_active():
+                    self.vo_se_engine.stream.start_stream()
+
+                # 生成された音声を別スレッドで再生開始
+                import threading
+                # play_audioメソッド内でストリームに書き込む
+                playback_thread = threading.Thread(target=self.vo_se_engine.play_audio, args=(audio_track,))
+                playback_thread.daemon = True 
+                playback_thread.start()
+                
+                # GUIの再生状態を更新
+                self.current_playback_time = start_time # 再生開始位置をセット
+                self.start_time_real = time.time() - self.current_playback_time
+                self.is_playing = True
+                self.playback_timer.start() # UI上のカーソル移動タイマーを開始
+                
+                self.play_button.setText("■ 再生中 (停止)")
+                self.status_label.setText(f"再生開始しました (範囲: {start_time:.2f}s - {end_time:.2f}s)。")
+
+            except Exception as e: # ValueErrorだけでなく一般的なエラーもキャッチ
+                 self.status_label.setText(f"再生エラーが発生しました: {e}")
+                 print(f"再生エラーの詳細: {e}")
+
+                
 
 
     @Slot()
@@ -245,42 +332,75 @@ class MainWindow(QMainWindow):
             # self.timeline_widget.notes_list = []
             self.timeline_widget.set_recording_state(True, time.time())
 
+#キャラクター変更スロット
+    @Slot()
+    def on_character_changed(self):
+        char_id = self.character_selector.currentData()
+        self.vo_se_engine.set_active_character(char_id)
+
     
+# main_window.py 内
+
     @Slot()
     def update_playback_cursor(self):
-        """タイマーイベントごとに呼び出され、再生カーソル位置を更新する"""
+        """タイマーイベントごとに呼び出され、再生カーソル位置とオーディオ再生を同期更新する"""
         if self.is_playing:
             current_system_time = time.time()
             self.current_playback_time = current_system_time - self.start_time_real
             
-            # ↓↓↓↓ ループ処理のロジックを更新 ↓↓↓↓
+            # --- オーディオ再生バッファの管理 ---
+            # NOTE: このリアルタイムのアプローチは非常に複雑です。
+            # ここでは、再生タイミングになったノートのバッファを生成し、直ちにストリームに書き込む簡易的な方法を維持します。
+            
+            notes_to_play_on = []
+            notes_to_play_off = []
+            for note in self.timeline_widget.notes_list:
+                if note not in self.playing_notes:
+                    if self.current_playback_time >= note.start_time and self.current_playback_time < note.start_time + note.duration:
+                        notes_to_play_on.append(note)
+                else:
+                    if self.current_playback_time >= note.start_time + note.duration:
+                        notes_to_play_off.append(note)
+            
+            for note in notes_to_play_off:
+                # このタイミングで note_off を音声エンジンまたはストリームに送る必要がある
+                del self.playing_notes[note]
+            
+            for note in notes_to_play_on:
+                self.playing_notes[note] = True
+                
+                duration_left = note.start_time + note.duration - self.current_playback_time
+                if duration_left > 0:
+                   # VO-SE Engine の簡易合成機能を使用してバッファを取得
+                   # （VO-SE Engine内に generate_audio_buffer のロジックを統合した前提）
+                   audio_buffer = self.vo_se_engine.generate_note_buffer(
+                       note.note_number, 0, duration_left, self.current_playback_time
+                   )
+                   
+                   if audio_buffer.size > 0:
+                        # 生成したバッファを pyaudio ストリームに書き込む
+                        # self.vo_se_engine.stream は pyaudio ストリームである前提
+                        self.vo_se_engine.stream.write(audio_buffer.tobytes())
+
+            # --- ループ処理のロジック ---
             if self.is_looping:
                 if self.is_looping_selection:
-                    # 選択範囲の開始・終了時間を取得
                     project_start_time, project_end_time = self.timeline_widget.get_selected_notes_range()
                 else:
-                    # プロジェクト全体の開始・終了時間を取得
                     project_start_time, project_end_time = self.timeline_widget.get_project_duration_and_start()
                 
-                # 再生時間が終了時間を超えた場合、開始時間に戻す
                 if self.current_playback_time >= project_end_time and project_end_time > project_start_time:
                     self.current_playback_time = project_start_time
-                    self.start_time_real = time.time() - self.current_playback_time # リアルタイムの開始時間を再設定
+                    self.start_time_real = time.time() - self.current_playback_time
                 
-                # 再生開始時間がループ開始点より前の場合、開始点にジャンプさせる
                 if self.current_playback_time < project_start_time:
                     self.current_playback_time = project_start_time
                     self.start_time_real = time.time() - self.current_playback_time
 
-            # ↑↑↑↑ ループ処理のロジックを更新 ↑↑↑↑
-
-            
-           self.timeline_widget.set_current_time(self.current_playback_time)
-              # TODO: ここで音声エンジンの再生制御も同期させる必要がある
-             
-              # ↓↓↓↓ GraphEditorWidgetの再生カーソルも更新 (ここを追加) ↓↓↓↓
-              self.graph_editor_widget.set_current_time(self.current_playback_time)
-              # ↑↑↑↑ GraphEditorWidgetの再生カーソルも更新 ↑↑↑↑
+            # --- GUIの更新と自動スクロール ---
+            self.timeline_widget.set_current_time(self.current_playback_time)
+            # GraphEditorWidgetの再生カーソルも更新
+            self.graph_editor_widget.set_current_time(self.current_playback_time)
 
             # 自動スクロールのロジック
             current_beats = self.timeline_widget.seconds_to_beats(self.current_playback_time)
@@ -292,7 +412,7 @@ class MainWindow(QMainWindow):
             clamped_scroll_x = max(min_scroll_value, min(max_scroll_value, target_scroll_x))
             self.h_scrollbar.setValue(int(clamped_scroll_x))
 
-    
+
     @Slot()
     def update_scrollbar_range(self):
         """ズーム変更時やノートリスト変更時などに水平スクロールバーの範囲を動的に更新する"""
@@ -471,11 +591,33 @@ class MainWindow(QMainWindow):
         elif event_type == 'off':
             self.status_label.setText(f"ノートオフ: {note_number}")
 
+    
+
+
     def closeEvent(self, event):
-        """アプリケーション終了時のクリーンアップ処理。MIDIマネージャーを停止する。"""
-        if self.midi_manager:
+        """アプリケーション終了時のクリーンアップ処理。MIDIマネージャー、オーディオストリーム、そしてVO-SE Engineを停止・終了する。"""
+        
+        # 1. MIDIマネージャーの停止
+        if self.midi_manager: 
             self.midi_manager.stop()
+        
+        # 2. PyAudio ストリームのクリーンアップ（古い実装が残っている場合の安全策）
+        #    VO-SE Engine に処理を委譲する場合はこの部分は不要になりますが、
+        #    両方の実装が混在していたため、ここでは両方有効な状態としています。
+        if hasattr(self, 'stream') and self.stream.is_active():
+            self.stream.stop_stream()
+            self.stream.close()
+        if hasattr(self, 'p'):
+            self.p.terminate()
+
+        # 3. VO-SE Engine インスタンスのクローズ処理を呼び出す
+        #    （オーディオクリーンアップをVO-SE Engine内に集約した場合）
+        if self.vo_se_engine:
+            self.vo_se_engine.close()
+
+        # イベントを受け入れてウィンドウを閉じる
         event.accept()
+
   
 
     @Slot(list)
@@ -507,3 +649,81 @@ class MainWindow(QMainWindow):
             self.tempo_input.setText(str(self.timeline_widget.tempo)) # 無効な値は元の値に戻す
 
 
+
+
+# main_window.py の on_play_pause_toggled 内（簡易オフライン再生版）
+
+
+    @Slot()
+    def on_play_pause_toggled(self):
+        """再生/停止ボタンのハンドラ"""
+        
+        # ----------------------------------------
+        # 再生中の場合: 停止処理を実行
+        # ----------------------------------------
+        if self.is_playing:
+            self.is_playing = False
+            self.playback_timer.stop()
+            
+            # TODO: VO-SE Engineで再生中の音声があれば停止させる仕組みが必要
+            # 例: self.vo_se_engine.stop_playback() 
+            
+            self.play_button.setText("再生/停止")
+            self.status_label.setText("再生停止しました。")
+            self.playing_notes = {} # 再生管理リストをクリア
+            
+
+        # ----------------------------------------
+        # 停止中の場合: 音声生成と再生開始処理を実行
+        # ----------------------------------------
+        else:
+            # 録音中であれば、先に録音を停止する
+            if self.is_recording:
+                self.on_record_toggled()
+            
+            # --- ループ範囲を取得（TODO箇所を修正） ---
+            if self.is_looping_selection and self.timeline_widget.get_selected_notes():
+                 start_time, end_time = self.timeline_widget.get_selected_notes_range()
+            else:
+                 # 選択範囲がない場合や通常ループの場合、プロジェクト全体の範囲を取得
+                 start_time, end_time = self.timeline_widget.get_project_duration_and_start()
+
+            if start_time >= end_time:
+                 self.status_label.setText("ノートが存在しないため再生できません。")
+                 return
+
+            # --- ここでエンジンを呼び出して音声を生成 ---
+            # これは時間がかかるため、UIをブロックしないように別スレッドで実行するのが理想的。
+            # ただし、ここでは簡易的にメインスレッドで実行。
+            notes = self.timeline_widget.notes_list
+            pitch = self.pitch_data # MainWindow が保持しているピッチデータ
+            
+            try:
+                self.status_label.setText("音声生成中...お待ちください。")
+                QApplication.processEvents() # UIを更新してユーザーにメッセージを表示
+
+                # 音声生成（時間がかかる処理）
+                audio_track = self.vo_se_engine.synthesize_track(notes, pitch, start_time, end_time)
+                
+                # 生成が完了したら再生準備
+                self.current_playback_time = start_time # 再生開始位置をセット
+                self.start_time_real = time.time() - self.current_playback_time
+                
+                self.is_playing = True
+                self.playback_timer.start() # UI上のカーソル移動タイマーを開始
+                
+                # --- 生成された音声を別スレッドで再生開始 ---
+                # UIタイマーとは独立してオーディオ再生スレッドを起動する
+                import threading
+                # play_audioメソッド内でブロッキング再生（最後まで再生してから戻る）を想定
+                playback_thread = threading.Thread(target=self.vo_se_engine.play_audio, args=(audio_track,))
+                playback_thread.daemon = True # メインアプリ終了時に一緒に終了させる
+                playback_thread.start()
+                
+                self.play_button.setText("■ 再生中 (停止)")
+                self.status_label.setText(f"再生開始しました (範囲: {start_time:.2f}s - {end_time:.2f}s)。")
+
+            except ValueError as e:
+                self.status_label.setText(f"再生エラー: {e}")
+            except Exception as e:
+                 self.status_label.setText(f"予期せぬエラーが発生しました: {e}")
