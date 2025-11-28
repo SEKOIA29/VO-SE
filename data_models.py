@@ -57,3 +57,15 @@ class NoteEvent:
             data['velocity'],
             data.get('lyrics', '')
         )
+
+
+
+class CharacterInfo:
+    def __init__(self, char_id: str, name: str, description: str, engine_params: dict = None, waveform_type: str = "sine"): # waveform_typeを追加
+        self.char_id = char_id
+        self.name = name
+        self.description = description
+        self.engine_params = engine_params if engine_params is not None else {}
+        self.waveform_type = waveform_type # 'sine', 'square', 'sawtooth'などを想定
+
+    
