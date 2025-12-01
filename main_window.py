@@ -651,6 +651,43 @@ class MainWindow(QMainWindow):
 
 
 
+    def keyPressEvent(self, event: QKeyEvent):
+        """
+        キーボードショートカットのイベントハンドラ。
+        スペースキーで再生/停止を切り替える。
+        """
+        if event.key() == Qt.Key_Space:
+            # スペースキーが押されたら、再生/停止ボタンのスロットを呼び出す
+            self.on_play_pause_toggled()
+            event.accept() # イベントを処理済みとしてマーク
+        
+        elif event.key() == Qt.Key_R and event.modifiers() == Qt.ControlModifier:
+            # Ctrl+R で録音開始/停止 (例)
+            self.on_record_toggled()
+            event.accept()
+
+        elif event.key() == Qt.Key_L and event.modifiers() == Qt.ControlModifier:
+            # Ctrl+L でループ切り替え (例)
+            self.on_loop_button_toggled()
+            event.accept()
+
+        # ウィジェットにフォーカスがある状態で Delete/Backspaceが押された場合の処理
+        # TimelineWidgetで既に実装されているかもしれませんが、MainWindowでも一括処理可能
+        elif event.key() == Qt.Key_Delete or event.key() == Qt.Key_Backspace:
+            # 現在フォーカスがあるウィジェットがTimelineWidgetなら、その削除機能を呼び出す
+            if self.centralWidget().findFocus() == self.timeline_widget:
+                 self.timeline_widget.delete_selected_notes()
+                 event.accept()
+
+        else:
+            # 他のキーイベントは親クラス（QMainWindow）に任せる
+            super().keyPressEvent(event)
+
+
+
+
+
+
 # main_window.py の on_play_pause_toggled 内（簡易オフライン再生版）
 
 
