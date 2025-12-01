@@ -1,5 +1,3 @@
-# timeline_widget.py
- 
 import json
 from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLineEdit
 from PySide6.QtCore import Qt, QRect, QPoint, QEvent, Slot, Signal, QSize, QWheelEvent
@@ -73,72 +71,9 @@ class TimelineWidget(QWidget):
     def set_notes(self, new_notes: list[NoteEvent]):
         self.notes_list = new_notes
         self.update()
-    def set_notes(self, new_notes: list[NoteEvent]):
-        self.notes_list = new_notes
-        self.update()
-        self.notes_changed_signal.emit() # ★追加
+        self.notes_changed_signal.emit() # ★追加: set_notesは重複していたため統合してemitを追加
 
     # record_midi_event メソッドの最後にシグナル発行を追加
-    @Slot(int, int, str, float)
-    def record_midi_event(self, note_number: int, velocity: int, event_type: str, timestamp: float):
-        # ... (既存のロジックはそのまま) ...
-                if duration > 0:
-                    # ... (中略) ...
-                    self.notes_list.append(new_note)
-                    self.update()
-                    self.notes_changed_signal.emit() # ★変更: zoom_changed_signalから変更
-
-    # update_scrollbar_range_after_recording メソッドを削除または変更
-    # MainWindowで直接get_max_beat_positionを呼び出すため、このメソッドは不要になります。
-    # このメソッドは使われなくなるので、安全のために削除するかコメントアウトできます。
-    def update_scrollbar_range_after_recording(self):
-        pass # MainWindowの update_scrollbar_range で処理するため、ここでは何もしない
-
-    # mouseDoubleClickEvent メソッド (新しい音符作成時)
-    def mouseDoubleClickEvent(self, event: QMouseEvent):
-        # ... (既存のロジックはそのまま) ...
-            if ok and new_lyric:
-                # ... (中略) ...
-                self.notes_list.append(new_note)
-                self.update()
-                self.notes_changed_signal.emit() # ★変更: zoom_changed_signalから変更
-                print(f"新しい音符を作成しました: {new_note}")
-
-    # paste_notes_from_clipboard メソッド
-    def paste_notes_from_clipboard(self):
-        # ... (既存のロジックはそのまま) ...
-                new_note.is_selected = True
-                new_notes.append(new_note)
-            self.notes_list.extend(new_notes)
-            self.update()
-            self.notes_changed_signal.emit() # ★変更: zoom_changed_signalから変更
-            print(f"クリップボードから {len(new_notes)} 件の音符をペーストしました。")
-
-    # delete_selected_notes メソッド
-    def delete_selected_notes(self):
-        count_before = len(self.notes_list)
-        self.notes_list = [note for note in self.notes_list if not note.is_selected]
-        count_after = len(self.notes_list)
-        if count_after < count_before: 
-            print(f"{count_before - count_after} 件の音符を削除しました。")
-            self.update()
-            self.notes_changed_signal.emit() # ★変更: zoom_changed_signalから変更
-
-
-    def get_project_duration_and_start(self) -> tuple[float, float]:
-        """★追加: プロジェクト全体の開始時間（秒）と終了時間（秒）を取得する（ループ再生用）"""
-        if not self.notes_list:
-            return 0.0, 0.0
-        
-        start_times = [note.start_time for note in self.notes_list]
-        end_times = [note.start_time + note.duration for note in self.notes_list]
-        
-        min_start = min(start_times) if start_times else 0.0
-        max_end = max(end_times) if end_times else 0.0
-        
-        # 少しだけ余白を持たせる
-        return max(0.0, min_start - 0.5), max_end + 0.5
-  
     @Slot(int, int, str, float)
     def record_midi_event(self, note_number: int, velocity: int, event_type: str, timestamp: float):
         if not self.is_recording: return
@@ -163,6 +98,7 @@ class TimelineWidget(QWidget):
                     )
                     self.notes_list.append(new_note)
                     self.update()
+                    self.notes_changed_signal.emit() # ★修正：シグナル発行を追加
     
     def set_recording_state(self, state: bool, start_time: float):
         self.is_recording = state
@@ -170,9 +106,49 @@ class TimelineWidget(QWidget):
         if not state: self.open_recorded_notes = {}
         self.update()
     
+    # update_scrollbar_range_after_recording メソッドを削除または変更
+    # MainWindowで直接get_max_beat_positionを呼び出すため、このメソッドは不要になります。
     def update_scrollbar_range_after_recording(self):
-        self.zoom_changed_signal.emit()
-    
+        pass # MainWindowの update_scrollbar_range で処理するため、ここでは何もしない
+
+    # mouseDoubleClickEvent メソッド (新しい音符作成時)
+    def mouseDoubleClickEvent(self, event: QMouseEvent):
+        click_beat = (event.position().x() + self.scroll_x_offset) / self.pixels_per_beat
+        quantized_beat = self.quantize_value(click_beat, self.quantize_resolution)
+        start_time = self.beats_to_seconds(quantized_beat)
+
+        click_y = event.position().y() + self.scroll_y_offset
+        note_number = self.lowest_note_display + 1 - int(click_y / self.key_height_pixels)
+
+        new_lyric, ok = QInputDialog.getText(self, "音符の作成", "歌詞を入力してください:", QLineEdit.Normal, "あ")
+        
+        if ok and new_lyric:
+            new_note = NoteEvent(
+                note_number=note_number,
+                start_time=start_time,
+                duration=self.beats_to_seconds(self.quantize_resolution * 2),
+                velocity=100,
+                lyrics=new_lyric
+            )
+            self.notes_list.append(new_note)
+            self.update()
+            self.notes_changed_signal.emit() # ★修正：シグナル発行を追加
+            print(f"新しい音符を作成しました: {new_note}")
+
+    def get_project_duration_and_start(self) -> tuple[float, float]:
+        """★追加: プロジェクト全体の開始時間（秒）と終了時間（秒）を取得する（ループ再生用）"""
+        if not self.notes_list:
+            return 0.0, 0.0
+        
+        start_times = [note.start_time for note in self.notes_list]
+        end_times = [note.start_time + note.duration for note in self.notes_list]
+        
+        min_start = min(start_times) if start_times else 0.0
+        max_end = max(end_times) if end_times else 0.0
+        
+        # 少しだけ余白を持たせる
+        return max(0.0, min_start - 0.5), max_end + 0.5
+
     # --- (1) 描画処理: paintEvent ---
     def paintEvent(self, event: QPaintEvent):
         painter = QPainter(self)
@@ -295,86 +271,32 @@ class TimelineWidget(QWidget):
                     height = self.key_height_pixels
                     note_rect = QRect(int(start_x), int(y_pos), int(width), int(height))
                     if final_rect.intersects(note_rect):
-                        if self.is_additive_selection_mode: note.is_selected = not note.is_selected
-                        else: note.is_selected = True
+                        note.is_selected = True
+                    elif not self.is_additive_selection_mode:
+                         note.is_selected = False
+                self.selection_start_pos = None
+                self.selection_end_pos = None
+                self.update()
             
-            # クオンタイズの適用
-            if self.edit_mode == 'move' and self.target_note:
-                start_time_beats = self.seconds_to_beats(self.target_note.start_time)
-                quantized_beats = self.quantize_value(start_time_beats, self.quantize_resolution)
-                self.target_note.start_time = self.beats_to_seconds(quantized_beats)
-            elif self.edit_mode == 'resize' and self.target_note:
-                duration_beats = self.seconds_to_beats(self.target_note.duration)
-                quantized_duration = self.quantize_value(duration_beats, self.quantize_resolution)
-                if quantized_duration > 0.01:
-                    self.target_note.duration = self.beats_to_seconds(quantized_duration)
-                else:
-                    self.target_note.duration = self.beats_to_seconds(0.01)
+            # moveまたはresize操作が終了したら、データ変更シグナルを発行
+            if self.edit_mode in ('move', 'resize') and self.target_note:
+                # クオンタイズ処理をここに入れるのが良い
+                self.target_note.start_time = self.beats_to_seconds(
+                    self.quantize_value(self.seconds_to_beats(self.target_note.start_time), self.quantize_resolution)
+                )
+                self.target_note.duration = self.beats_to_seconds(
+                    self.quantize_value(self.seconds_to_beats(self.target_note.duration), self.quantize_resolution)
+                )
+                if self.target_note.duration < 0.01: self.target_note.duration = self.beats_to_seconds(0.01)
+
+                self.notes_changed_signal.emit() # ★追加：ノートの移動・リサイズ完了時にシグナル発行
+                self.update()
 
             self.edit_mode = None
+            self.drag_start_pos = None
+            self.drag_start_note_pos = None
             self.target_note = None
-            self.selection_start_pos = None
-            self.selection_end_pos = None
-            self.is_additive_selection_mode = False
-            self.update()
 
-    def mouseDoubleClickEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
-            click_point = event.position().toPoint()
-            edited_note = None
-            for note in self.notes_list:
-                start_x = (self.seconds_to_beats(note.start_time) * self.pixels_per_beat) - self.scroll_x_offset
-                width = (self.seconds_to_seconds(note.duration) * self.pixels_per_beat) # バグ修正: beats_to_secondsをseconds_to_beatsに修正？いや、元のままで正しいか...
-                # 修正：元のコードのままとする。width計算がおかしい気がするが、元のコードを優先
-                width = (self.seconds_to_beats(note.duration) * self.pixels_per_beat)
-                y_pos = (self.lowest_note_display + 1 - note.note_number) * self.key_height_pixels - self.scroll_y_offset
-                height = self.key_height_pixels
-                note_rect = QRect(int(start_x), int(y_pos), int(width), int(height))
-                if note_rect.contains(click_point):
-                    edited_note = note; break
-            
-            if edited_note:
-                current_lyric = edited_note.lyrics
-                new_lyric, ok = QInputDialog.getText(self, "歌詞の編集", "新しい歌詞を入力してください:", QLineEdit.Normal, current_lyric)
-                if ok and new_lyric != current_lyric:
-                    edited_note.lyrics = new_lyric
-                    self.update(); print(f"ノートの歌詞を編集しました: {edited_note}")
-                return
-
-            # ノート作成モードでもクオンタイズを考慮
-            absolute_x_pixel = click_point.x() + self.scroll_x_offset
-            clicked_beats = absolute_x_pixel / self.pixels_per_beat
-            quantized_start_beats = self.quantize_value(clicked_beats, self.quantize_resolution)
-            start_time = self.beats_to_seconds(quantized_start_beats)
-            
-            absolute_y_pixel = click_point.y() + self.scroll_y_offset
-            relative_pitch_pos = absolute_y_pixel / self.key_height_pixels
-            note_number = self.lowest_note_display + 1 - round(relative_pitch_pos)
-            
-            new_lyric, ok = QInputDialog.getText(self, "新しい音符の作成", "歌詞を入力してください:", QLineEdit.Normal, "あ")
-            if ok and new_lyric:
-                default_duration = self.beats_to_seconds(self.quantize_resolution * 4)
-                new_note = NoteEvent(note_number=note_number, start_time=start_time, duration=default_duration, velocity=100, lyrics=new_lyric)
-                self.notes_list.append(new_note)
-                self.update(); print(f"新しい音符を作成しました: {new_note}")
-
-
-    def wheelEvent(self, event: QWheelEvent):
-        # ★修正・追加: Ctrlキーでの垂直ズームとシグナル通知のロジック
-        delta_y = event.angleDelta().y()
-        if event.modifiers() & Qt.ControlModifier:
-            zoom_factor = 1.0 + (delta_y / 1200.0)
-            self.key_height_pixels *= zoom_factor
-            self.key_height_pixels = max(5.0, min(30.0, self.key_height_pixels))
-            self.update()
-            self.vertical_zoom_changed_signal.emit() 
-        else:
-            zoom_factor = 1.0 + (delta_y / 1200.0)
-            self.pixels_per_beat *= zoom_factor
-            self.pixels_per_beat = max(10.0, min(200.0, self.pixels_per_beat))
-            self.update()
-            self.zoom_changed_signal.emit()
-    
     # --- (3) キーボードイベント処理とアクション ---
     def keyPressEvent(self, event: QKeyEvent):
         if event.modifiers() == Qt.ControlModifier and event.key() == Qt.Key_C: self.copy_selected_notes_to_clipboard()
@@ -414,6 +336,7 @@ class TimelineWidget(QWidget):
                 new_notes.append(new_note)
             self.notes_list.extend(new_notes)
             self.update()
+            self.notes_changed_signal.emit() # ★修正：ペースト後にシグナル発行
             print(f"クリップボードから {len(new_notes)} 件の音符をペーストしました。")
         except json.JSONDecodeError: print("JSONエラー")
         except Exception as e: print(f"ペーストエラー: {e}")
@@ -422,7 +345,10 @@ class TimelineWidget(QWidget):
         count_before = len(self.notes_list)
         self.notes_list = [note for note in self.notes_list if not note.is_selected]
         count_after = len(self.notes_list)
-        if count_after < count_before: print(f"{count_before - count_after} 件の音符を削除しました。"); self.update()
+        if count_after < count_before: 
+            print(f"{count_before - count_after} 件の音符を削除しました。")
+            self.update()
+            self.notes_changed_signal.emit() # ★修正：削除後にシグナル発行
 
     def get_current_playback_time(self) -> float:
         return self._current_playback_time
@@ -436,7 +362,7 @@ class TimelineWidget(QWidget):
         self.update()
 
 
-#ノードの計算してくれる奴
+    #ノードの計算してくれる奴
     def get_max_beat_position(self) -> float:
         """プロジェクト内の最後のノートの終了位置（拍単位）を取得する"""
         if not self.notes_list:
@@ -450,7 +376,7 @@ class TimelineWidget(QWidget):
         max_end_beats = self.seconds_to_beats(max_end_time_seconds)
         return max_end_beats + 4.0 # 終端から4拍分の余白を持たせる
 
-#選択されたノートから最小の時間から最大の終了時間を計算してくれるめぞ
+    #選択されたノートから最小の時間から最大の終了時間を計算してくれるめぞ
     def get_selected_notes_range(self) -> tuple[float, float]:
         """選択されているノートの開始時間と終了時間を取得する（秒単位）"""
         selected_notes = [note for note in self.notes_list if note.is_selected]
@@ -465,5 +391,3 @@ class TimelineWidget(QWidget):
         max_end = max(end_times) if end_times else 0.0
         
         return min_start, max_end
-
-
