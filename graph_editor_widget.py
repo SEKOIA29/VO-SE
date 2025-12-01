@@ -1,5 +1,3 @@
-# graph_editor_widget.py
-
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt, Signal, Slot, QSize, QRect, QPoint
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QPaintEvent, QMouseEvent
@@ -15,7 +13,7 @@ class GraphEditorWidget(QWidget):
         self.scroll_x_offset = 0
         self.pixels_per_beat = 40.0 # TimelineWidgetと同期させる
         self._current_playback_time = 0.0
-        self.pitch_events = [] # ここにPitchEventのリストが格納される
+        self.pitch_events: list[PitchEvent] = [] # ここにPitchEventのリストが格納される
         self.editing_point_index = None # ドラッグ中の点のインデックス
         self.drag_start_pos = None
         self.drag_start_value = None
@@ -36,7 +34,7 @@ class GraphEditorWidget(QWidget):
         self._current_playback_time = time_in_seconds
         self.update()
 
-    def set_pitch_events(self, events: list):
+    def set_pitch_events(self, events: list[PitchEvent]):
         self.pitch_events = events
         self.update()
 
@@ -58,6 +56,7 @@ class GraphEditorWidget(QWidget):
                 x = (self.seconds_to_beats(p.time, self.tempo) * self.pixels_per_beat) - self.scroll_x_offset
                 y = self.value_to_y(p.value, self.height())
                 
+                # クリック範囲を広めにとる
                 if QRect(int(x)-5, int(y)-5, 10, 10).contains(clicked_point):
                     self.editing_point_index = i
                     self.drag_start_pos = clicked_point
@@ -82,6 +81,7 @@ class GraphEditorWidget(QWidget):
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton and self.editing_point_index is not None:
+            # ドラッグ終了時に時間でソートし直す
             self.pitch_events.sort(key=lambda p: p.time)
             self.pitch_data_changed.emit(self.pitch_events)
             self.editing_point_index = None
@@ -93,6 +93,7 @@ class GraphEditorWidget(QWidget):
         if event.button() == Qt.LeftButton:
             click_point = event.position().toPoint()
             
+            # 既存のポイント削除判定
             for i, p in enumerate(self.pitch_events):
                 x = (self.seconds_to_beats(p.time, self.tempo) * self.pixels_per_beat) - self.scroll_x_offset
                 y = self.value_to_y(p.value, self.height())
@@ -101,19 +102,18 @@ class GraphEditorWidget(QWidget):
                     self.pitch_events.sort(key=lambda p: p.time)
                     self.pitch_data_changed.emit(self.pitch_events)
                     self.update()
-                    return
+                    return # 削除したら新規作成は行わない
 
+            # 新規ポイント作成
             absolute_x_pixel = click_point.x() + self.scroll_x_offset
             clicked_beats = absolute_x_pixel / self.pixels_per_beat
             quantized_beats = self.quantize_value(clicked_beats, 0.25)
             
             new_time = (quantized_beats * 60.0) / self.tempo
             
-            # Y位置に基づいて初期値を決定する
             widget_height = self.height()
             center_y = widget_height / 2
             max_midi_pitch_value = 8191.0
-            # クリック位置 (event.position().y()) から値を逆算
             click_y = event.position().y()
             value_at_click = -((click_y - center_y) / (center_y * 0.9)) * max_midi_pitch_value
             clamped_value_at_click = max(-8192, min(8191, int(value_at_click)))
@@ -125,10 +125,11 @@ class GraphEditorWidget(QWidget):
             self.update()
 
     # ヘルパー関数: ピッチ値をY座標にマッピング
-    def value_to_y(self, value, widget_height):
+    def value_to_y(self, value: int, widget_height: int) -> float:
         center_y = widget_height / 2
         max_midi_pitch_value = 8191.0
-        y = center_y - (value / max_midi_pitch_value) * (center_y * 0.9)
+        # 90%の範囲に収めるように調整
+        y = center_y - (value / max_midi_pitch_value) * (center_y * 0.9) 
         return y
     
     # paintEvent メソッド
@@ -140,6 +141,7 @@ class GraphEditorWidget(QWidget):
         widget_height = self.height()
         center_y = widget_height / 2
         
+        # 中央の基準線を描画
         painter.setPen(QPen(QColor(100, 100, 100), 1, Qt.DashLine))
         painter.drawLine(0, int(center_y), self.width(), int(center_y))
 
@@ -147,6 +149,7 @@ class GraphEditorWidget(QWidget):
             painter.setPen(QPen(QColor(0, 150, 255), 2))
             max_midi_pitch_value = 8191.0
             
+            # 線を描画
             for i in range(1, len(self.pitch_events)):
                 p1 = self.pitch_events[i-1]
                 p2 = self.pitch_events[i]
@@ -159,18 +162,21 @@ class GraphEditorWidget(QWidget):
 
                 painter.drawLine(int(x1), int(y1), int(x2), int(y2))
 
+            # ポイント（点）を描画
             for i, p in enumerate(self.pitch_events):
                 x = (self.seconds_to_beats(p.time, self.tempo) * self.pixels_per_beat) - self.scroll_x_offset
                 y = self.value_to_y(p.value, widget_height)
 
                 if i == self.editing_point_index:
-                     painter.setBrush(QBrush(QColor(255, 255, 0)))
+                     painter.setBrush(QBrush(QColor(255, 255, 0))) # 選択中は黄色
                 else:
                     painter.setBrush(QBrush(QColor(0, 150, 255)))
-
+                
+                # 点の境界線
                 painter.setPen(QPen(Qt.black, 1))
                 painter.drawEllipse(int(x)-4, int(y)-4, 8, 8)
 
+        # 再生カーソルを描画
         playback_beats = self.seconds_to_beats(self._current_playback_time)
         cursor_x = (playback_beats * self.pixels_per_beat) - self.scroll_x_offset
         if cursor_x >= 0 and cursor_x <= self.width():
