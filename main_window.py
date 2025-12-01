@@ -460,13 +460,14 @@ class MainWindow(QMainWindow):
         )
         if filepath:
             notes_data = [note.to_dict() for note in self.timeline_widget.notes_list]
-            pitch_data = [p_event.to_dict() for p_event in self.pitch_data] # ★追加: ピッチデータをdictに変換
+            pitch_data = [p_event.to_dict() for p_event in self.pitch_data]
             
             save_data_structure = {
-                "app_id": "Vocaloid_Clone_App_12345", 
-                "type": "note_project_data", 
+                "app_id": "Vocaloid_Clone_App_12345",
+                "type": "note_project_data",
+                "tempo_bpm": self.timeline_widget.tempo, # 現在のテンポを保存
                 "notes": notes_data,
-                "pitch_data": pitch_data # ★追加: JSON構造にピッチデータを含める
+                "pitch_data": pitch_data
             }
             try:
                 with open(filepath, 'w', encoding='utf-8') as f:
@@ -474,6 +475,8 @@ class MainWindow(QMainWindow):
                 self.status_label.setText(f"プロジェクトを保存しました: {filepath}")
             except Exception as e:
                 self.status_label.setText(f"保存エラー: {e}")
+
+
 
     @Slot()
     def export_to_midi_file(self):
@@ -536,6 +539,8 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 self.status_label.setText(f"MIDIファイル保存エラー: {e}")
 
+
+
     @Slot()
     def open_file_dialog_and_load_midi(self):
         """ファイルダイアログを開き、MIDIファイルまたはJSONプロジェクトファイルを読み込む。"""
@@ -545,8 +550,9 @@ class MainWindow(QMainWindow):
         )
         if filepath:
             notes_list = []
-            loaded_pitch_data = [] # ★追加: 読み込んだピッチデータを一時的に保持
-            
+            loaded_pitch_data = []
+            loaded_tempo = None # 読み込んだテンポを格納する変数
+
             if filepath.lower().endswith('.json'):
                 try:
                     with open(filepath, 'r', encoding='utf-8') as f:
@@ -554,9 +560,9 @@ class MainWindow(QMainWindow):
                         if data.get("app_id") == "Vocaloid_Clone_App_12345":
                             notes_data = data.get("notes", [])
                             notes_list = [NoteEvent.from_dict(d) for d in notes_data]
-                            # ★追加: ピッチデータを読み込み、PitchEventオブジェクトに変換
                             pitch_data_dicts = data.get("pitch_data", [])
                             loaded_pitch_data = [PitchEvent.from_dict(d) for d in pitch_data_dicts]
+                            loaded_tempo = data.get("tempo_bpm", None) # JSONからテンポを取得
 
                             self.status_label.setText(f"プロジェクトファイルの読み込み完了。ノート数: {len(notes_list)}, ピッチポイント数: {len(loaded_pitch_data)}")
                         else:
@@ -566,22 +572,43 @@ class MainWindow(QMainWindow):
                     return
 
             elif filepath.lower().endswith(('.mid', '.midi')):
-                # MIDIファイルからの読み込み時はピッチデータは生成されない
-                data_dicts = load_midi_file(filepath)
-                if data_dicts:
-                    notes_list = [NoteEvent.from_dict(d) for d in data_dicts]
-                    self.status_label.setText(f"MIDIファイルの読み込み完了。イベント数: {len(notes_list)}")
-            
+                import mido
+                try:
+                    mid = mido.MidiFile(filepath)
+                    # MIDIファイルからテンポ情報を抽出するロジック
+                    for track in mid.tracks:
+                        for msg in track:
+                            if msg.type == 'set_tempo':
+                                loaded_tempo = mido.tempo2bpm(msg.tempo)
+                                break
+                        if loaded_tempo: break
+                    
+                    data_dicts = load_midi_file(filepath)
+                    if data_dicts:
+                        notes_list = [NoteEvent.from_dict(d) for d in data_dicts]
+                        self.status_label.setText(f"MIDIファイルの読み込み完了。イベント数: {len(notes_list)}")
+                except Exception as e:
+                     self.status_label.setText(f"MIDIファイルの読み込みエラー: {e}")
+
             if notes_list or loaded_pitch_data:
-                # ノートリストをTimelineWidgetに設定
                 self.timeline_widget.set_notes(notes_list)
-                # MainWindowのピッチデータも更新
                 self.pitch_data = loaded_pitch_data
-                # GraphEditorWidgetにもピッチデータを設定して描画させる
                 self.graph_editor_widget.set_pitch_events(self.pitch_data)
+
+                # テンポ反映のロジック
+                if loaded_tempo is not None:
+                    try:
+                        new_tempo = float(loaded_tempo)
+                        self.tempo_input.setText(str(new_tempo))
+                        self.update_tempo_from_input() 
+                    except ValueError:
+                        self.status_label.setText("警告: テンポ情報が無効なため、デフォルトテンポを使用します。")
 
                 self.update_scrollbar_range()
                 self.update_scrollbar_v_range()
+
+
+
 
     @Slot(int, int, str)
     def update_gui_with_midi(self, note_number: int, velocity: int, event_type: str):
