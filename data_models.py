@@ -1,5 +1,3 @@
-# data_models.py
-
 class PitchEvent:
     """
     ピッチベンドのデータ構造を定義するクラス
@@ -65,7 +63,6 @@ class CharacterInfo:
         self.char_id = char_id
         self.name = name
         self.description = description
-        self.engine_params = engine_params if engine_params is not None else {}
+        # engine_params のデフォルト値を設定する際に、引数のデフォルト値 (None) を使用するように修正
+        self.engine_params = engine_params if engine_params is not None else {} 
         self.waveform_type = waveform_type # 'sine', 'square', 'sawtooth'などを想定
-
-    
