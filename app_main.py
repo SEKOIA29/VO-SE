@@ -21,3 +21,41 @@ if __name__ == "__main__":
     
     # アプリケーションのイベントループ（ユーザー操作の待ち受け）を開始する
     sys.exit(app.exec())
+
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    
+    # --- ここからスタイルシートの追加 ---
+    app.setStyleSheet("""
+        QMainWindow {
+            background-color: #2e2e2e;
+            color: #eeeeee;
+        }
+        QPushButton {
+            background-color: #007acc;
+            border: none;
+            color: white;
+            padding: 5px 10px;
+            margin: 2px;
+        }
+        QPushButton:hover {
+            background-color: #005f99;
+        }
+        QLabel {
+            color: #eeeeee;
+        }
+        QScrollBar:horizontal {
+            border: 1px solid #444444;
+            background: #333333;
+            height: 10px;
+            margin: 0px 0px 0px 0px;
+        }
+        /* ... 他のウィジェットのスタイルもここに追加 ... */
+    """)
+    # --- スタイルシートここまで ---
+
+    window = MainWindow() 
+    window.show()
+    sys.exit(app.exec())
