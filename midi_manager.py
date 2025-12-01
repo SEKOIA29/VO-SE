@@ -70,5 +70,3 @@ class MidiInputManager:
         elif message.type == 'note_off' or (message.type == 'note_on' and message.velocity == 0):
             midi_signals.midi_event_signal.emit(message.note, message.velocity, 'off')
             midi_signals.midi_event_record_signal.emit(message.note, message.velocity, 'off', timestamp)
-
-
