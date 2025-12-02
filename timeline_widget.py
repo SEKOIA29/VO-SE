@@ -10,7 +10,7 @@ from PySide6.QtCore import Qt, QRect, QPoint, QEvent, Slot, Signal, QSize, QWhee
 class TimelineWidget(QWidget):
     zoom_changed_signal = Signal()
     vertical_zoom_changed_signal = Signal()
-    notes_changed_signal = Signal() # ★追加: ノートデータ変更通知シグナル
+    notes_changed_signal = Signal()
  
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -34,7 +34,7 @@ class TimelineWidget(QWidget):
         self.target_note = None
         self.is_additive_selection_mode = False
         
-        self.quantize_resolution = 0.25 # クオンタイズ分解能 (16分音符)
+        self.quantize_resolution = 0.25
  
         self.is_recording = False
         self.recording_start_system_time = 0.0
@@ -71,9 +71,8 @@ class TimelineWidget(QWidget):
     def set_notes(self, new_notes: list[NoteEvent]):
         self.notes_list = new_notes
         self.update()
-        self.notes_changed_signal.emit() # ★追加: set_notesは重複していたため統合してemitを追加
+        self.notes_changed_signal.emit()
 
-    # record_midi_event メソッドの最後にシグナル発行を追加
     @Slot(int, int, str, float)
     def record_midi_event(self, note_number: int, velocity: int, event_type: str, timestamp: float):
         if not self.is_recording: return
@@ -98,7 +97,7 @@ class TimelineWidget(QWidget):
                     )
                     self.notes_list.append(new_note)
                     self.update()
-                    self.notes_changed_signal.emit() # ★修正：シグナル発行を追加
+                    self.notes_changed_signal.emit()
     
     def set_recording_state(self, state: bool, start_time: float):
         self.is_recording = state
@@ -106,12 +105,9 @@ class TimelineWidget(QWidget):
         if not state: self.open_recorded_notes = {}
         self.update()
     
-    # update_scrollbar_range_after_recording メソッドを削除または変更
-    # MainWindowで直接get_max_beat_positionを呼び出すため、このメソッドは不要になります。
     def update_scrollbar_range_after_recording(self):
-        pass # MainWindowの update_scrollbar_range で処理するため、ここでは何もしない
+        pass
 
-    # mouseDoubleClickEvent メソッド (新しい音符作成時)
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         click_beat = (event.position().x() + self.scroll_x_offset) / self.pixels_per_beat
         quantized_beat = self.quantize_value(click_beat, self.quantize_resolution)
@@ -132,11 +128,10 @@ class TimelineWidget(QWidget):
             )
             self.notes_list.append(new_note)
             self.update()
-            self.notes_changed_signal.emit() # ★修正：シグナル発行を追加
+            self.notes_changed_signal.emit()
             print(f"新しい音符を作成しました: {new_note}")
 
     def get_project_duration_and_start(self) -> tuple[float, float]:
-        """★追加: プロジェクト全体の開始時間（秒）と終了時間（秒）を取得する（ループ再生用）"""
         if not self.notes_list:
             return 0.0, 0.0
         
@@ -146,20 +141,19 @@ class TimelineWidget(QWidget):
         min_start = min(start_times) if start_times else 0.0
         max_end = max(end_times) if end_times else 0.0
         
-        # 少しだけ余白を持たせる
         return max(0.0, min_start - 0.5), max_end + 0.5
 
     # --- (1) 描画処理: paintEvent ---
     def paintEvent(self, event: QPaintEvent):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.fillRect(event.rect(), QColor(30, 30, 30))
+        # 背景色を暗いグレーに変更
+        painter.fillRect(event.rect(), QColor(30, 30, 30)) 
         
-        # ↓↓↓↓ ズームに応じたグリッド線の描画ロジック ↓↓↓↓
-        if self.pixels_per_beat * 4 > 150:    display_res = 0.25 # 16分音符
-        elif self.pixels_per_beat * 2 > 100:  display_res = 0.5  # 8分音符
-        elif self.pixels_per_beat > 80:       display_res = 1.0  # 4分音符
-        else:                                 display_res = 4.0  # 全音符/小節
+        if self.pixels_per_beat * 4 > 150:    display_res = 0.25
+        elif self.pixels_per_beat * 2 > 100:  display_res = 0.5
+        elif self.pixels_per_beat > 80:       display_res = 1.0
+        else:                                 display_res = 4.0
  
         start_beat = self.scroll_x_offset / self.pixels_per_beat
         end_beat = start_beat + self.width() / self.pixels_per_beat
@@ -171,16 +165,15 @@ class TimelineWidget(QWidget):
  
             x = (beat * self.pixels_per_beat) - self.scroll_x_offset
             if x >= 0:
-                if beat % 4.0 == 0: # 小節の先頭（4拍子の場合）
-                    painter.setPen(QPen(QColor(180, 180, 180), 2)) # 太い線
-                elif beat % 1.0 == 0: # 拍の先頭（4分音符）
-                    painter.setPen(QPen(QColor(100, 100, 100), 1)) # 中くらいの線
-                else: # 8分音符や16分音符
-                    painter.setPen(QPen(QColor(60, 60, 60), 1)) # 細い線
+                if beat % 4.0 == 0:
+                    painter.setPen(QPen(QColor(180, 180, 180), 2)) # 小節線
+                elif beat % 1.0 == 0:
+                    painter.setPen(QPen(QColor(100, 100, 100), 1)) # 拍線
+                else:
+                    painter.setPen(QPen(QColor(60, 60, 60), 1)) # 細線
                 
                 painter.drawLine(int(x), 0, int(x), self.height())
             i += 1
-        # ↑↑↑↑ グリッド線の描画改善終了 ↑↑↑↑
  
         for note in self.notes_list:
             start_x = (self.seconds_to_beats(note.start_time) * self.pixels_per_beat) - self.scroll_x_offset
@@ -188,28 +181,31 @@ class TimelineWidget(QWidget):
             y_pos = (self.lowest_note_display + 1 - note.note_number) * self.key_height_pixels - self.scroll_y_offset
             height = self.key_height_pixels
  
-            if note.is_selected: painter.setBrush(QBrush(QColor(0, 100, 255, 150)))
-            elif note.is_playing: painter.setBrush(QBrush(QColor(255, 100, 100)))
-            else: painter.setBrush(QBrush(QColor(0, 150, 255)))
+            if note.is_selected: 
+                painter.setBrush(QBrush(QColor(0, 100, 255, 180))) # 選択色
+            elif note.is_playing: 
+                painter.setBrush(QBrush(QColor(255, 100, 100))) # 再生中色
+            else: 
+                painter.setBrush(QBrush(QColor(0, 150, 255))) # 通常色
             
             painter.setPen(Qt.NoPen)
             painter.drawRect(int(start_x), int(y_pos), int(width), int(height))
             
             if note.lyrics:
-                painter.setPen(QColor(255, 255, 255))
+                painter.setPen(QColor(255, 255, 255)) # 白いテキスト
                 text_rect = QRect(int(start_x + 2), int(y_pos), int(width - 4), int(height))
                 painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter | Qt.ElideRight, note.lyrics)
             
         playback_beats = self.seconds_to_beats(self._current_playback_time)
         cursor_x = (playback_beats * self.pixels_per_beat) - self.scroll_x_offset
         if cursor_x >= 0 and cursor_x <= self.width():
-            painter.setPen(QPen(QColor(255, 50, 50), 2))
+            painter.setPen(QPen(QColor(255, 50, 50), 2)) # 再生カーソル（赤）
             painter.drawLine(int(cursor_x), 0, int(cursor_x), self.height())
  
         if self.edit_mode == 'select_box' and self.selection_start_pos and self.selection_end_pos:
             selection_rect = QRect(self.selection_start_pos, self.selection_end_pos).normalized()
             painter.setPen(QPen(QColor(0, 0, 0), 1, Qt.DashLine))
-            painter.setBrush(QColor(0, 100, 255, 50))
+            painter.setBrush(QColor(0, 100, 255, 80)) # 選択ボックス（半透明青）
             painter.drawRect(selection_rect)
 
     # --- (2) マウスイベント処理 ---
@@ -278,9 +274,7 @@ class TimelineWidget(QWidget):
                 self.selection_end_pos = None
                 self.update()
             
-            # moveまたはresize操作が終了したら、データ変更シグナルを発行
             if self.edit_mode in ('move', 'resize') and self.target_note:
-                # クオンタイズ処理をここに入れるのが良い
                 self.target_note.start_time = self.beats_to_seconds(
                     self.quantize_value(self.seconds_to_beats(self.target_note.start_time), self.quantize_resolution)
                 )
@@ -289,7 +283,7 @@ class TimelineWidget(QWidget):
                 )
                 if self.target_note.duration < 0.01: self.target_note.duration = self.beats_to_seconds(0.01)
 
-                self.notes_changed_signal.emit() # ★追加：ノートの移動・リサイズ完了時にシグナル発行
+                self.notes_changed_signal.emit()
                 self.update()
 
             self.edit_mode = None
@@ -336,7 +330,7 @@ class TimelineWidget(QWidget):
                 new_notes.append(new_note)
             self.notes_list.extend(new_notes)
             self.update()
-            self.notes_changed_signal.emit() # ★修正：ペースト後にシグナル発行
+            self.notes_changed_signal.emit()
             print(f"クリップボードから {len(new_notes)} 件の音符をペーストしました。")
         except json.JSONDecodeError: print("JSONエラー")
         except Exception as e: print(f"ペーストエラー: {e}")
@@ -348,7 +342,7 @@ class TimelineWidget(QWidget):
         if count_after < count_before: 
             print(f"{count_before - count_after} 件の音符を削除しました。")
             self.update()
-            self.notes_changed_signal.emit() # ★修正：削除後にシグナル発行
+            self.notes_changed_signal.emit()
 
     def get_current_playback_time(self) -> float:
         return self._current_playback_time
@@ -361,27 +355,19 @@ class TimelineWidget(QWidget):
                 elif event_type == 'off': note.is_playing = False
         self.update()
 
-
-    #ノードの計算してくれる奴
     def get_max_beat_position(self) -> float:
-        """プロジェクト内の最後のノートの終了位置（拍単位）を取得する"""
         if not self.notes_list:
             return 0.0
         
-        # すべてのノートの終了時間（秒）を計算
         end_times_seconds = [note.start_time + note.duration for note in self.notes_list]
         max_end_time_seconds = max(end_times_seconds)
         
-        # それを拍単位に変換し、少し余白を加える
         max_end_beats = self.seconds_to_beats(max_end_time_seconds)
-        return max_end_beats + 4.0 # 終端から4拍分の余白を持たせる
+        return max_end_beats + 4.0
 
-    #選択されたノートから最小の時間から最大の終了時間を計算してくれるめぞ
     def get_selected_notes_range(self) -> tuple[float, float]:
-        """選択されているノートの開始時間と終了時間を取得する（秒単位）"""
         selected_notes = [note for note in self.notes_list if note.is_selected]
         if not selected_notes:
-            # 選択がない場合はプロジェクト全体の範囲を返す（フォールバック）
             return self.get_project_duration_and_start()
 
         start_times = [note.start_time for note in selected_notes]
