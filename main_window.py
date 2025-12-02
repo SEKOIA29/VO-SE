@@ -297,6 +297,8 @@ class MainWindow(QMainWindow):
     def on_character_changed(self):
         char_id = self.character_selector.currentData()
         self.vo_se_engine.set_active_character(char_id)
+
+
     
     @Slot()
     def update_playback_cursor(self):
@@ -304,6 +306,13 @@ class MainWindow(QMainWindow):
         if self.is_playing:
             current_system_time = time.time()
             self.current_playback_time = current_system_time - self.start_time_real
+           # 再生時間を MM:SS.ms 形式にフォーマット
+            mins = int(self.current_playback_time / 60)
+            secs = int(self.current_playback_time % 60)
+            msecs = int((self.current_playback_time - int(self.current_playback_time)) * 100)
+            time_str = f"{mins:02}:{secs:02}.{msecs:02}"
+            self.time_display_label.setText(time_str)
+          
             
             # --- ループ処理のロジック ---
             if self.is_looping:
