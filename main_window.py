@@ -1,9 +1,9 @@
+# main_window.py ファイル全体のインポートリスト（参考用）
 import sys
 import time
 import json
-# janomeライブラリが必要です (pip install janome)
 from janome.tokenizer import Tokenizer
-import mido # MIDIエクスポートで使用するためインポートを移動
+import mido 
 
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QMenu, QVBoxLayout, 
                                QPushButton, QFileDialog, QScrollBar, QInputDialog, 
@@ -11,8 +11,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QMenu, QVBoxL
 from PySide6.QtGui import QAction, QKeySequence, QKeyEvent
 from PySide6.QtCore import Slot, Qt, QTimer, Signal
 
-#合成音声系
-from vo_se_engine import VO_SE_Engine # エンジンのインポート
+from vo_se_engine import VO_SE_Engine
 import numpy as np 
 
 from timeline_widget import TimelineWidget
@@ -37,7 +36,13 @@ class MainWindow(QMainWindow):
         self.pitch_data = [] # self.pitch_data をここで初期化
 
         # --- UIコンポーネントの初期化 ---
-        self.status_label = QLabel("アプリケーション起動中...", self)
+        self.status_label = QLabel("アプリケーション起動中...", self) # ステータスバーとして最下部に配置
+        
+        # ★GUI改修案1: 再生時間表示ラベルを追加
+        self.time_display_label = QLabel("00:00.00", self) 
+        self.time_display_label.setFixedWidth(100)
+        self.time_display_label.setStyleSheet("font-size: 14pt; font-weight: bold; color: #00ff00;")
+
         self.timeline_widget = TimelineWidget()
         self.keyboard_sidebar = KeyboardSidebarWidget(
             self.timeline_widget.key_height_pixels,
@@ -49,7 +54,9 @@ class MainWindow(QMainWindow):
         self.record_button = QPushButton("録音 開始/停止", self)
         self.open_button = QPushButton("MIDIファイルを開く", self)
         self.loop_button = QPushButton("ループ再生: OFF", self)
-        self.tempo_label = QLabel("テンポ (BPM):", self)
+        
+        # ★GUI改修案1: テンポラベルをシンプルに
+        self.tempo_label = QLabel("BPM:", self) 
         self.tempo_input = QLineEdit(str(self.timeline_widget.tempo), self)
         self.tempo_input.setFixedWidth(50)
         self.tempo_input.returnPressed.connect(self.update_tempo_from_input) 
@@ -89,27 +96,34 @@ class MainWindow(QMainWindow):
         self.main_splitter.setSizes([self.height() * 0.7, self.height() * 0.3])
         
 
+        # ボタンを横並びに配置するコード
         button_layout = QHBoxLayout()
+        # ★GUI改修案1: 再生時間表示をボタンの左隣に配置
+        button_layout.addWidget(self.time_display_label) 
+        
         button_layout.addWidget(self.play_button)
         button_layout.addWidget(self.record_button)
         button_layout.addWidget(self.loop_button)
 
+        # キャラクター選択UIの追加
         self.character_selector = QComboBox(self)
         for char_id, char_info in self.vo_se_engine.characters.items(): 
             self.character_selector.addItem(char_info.name, userData=char_id)
         self.character_selector.currentIndexChanged.connect(self.on_character_changed)
         button_layout.addWidget(self.character_selector) 
 
+        #テンポ表示
         button_layout.addWidget(self.tempo_label)
         button_layout.addWidget(self.tempo_input)
         button_layout.addWidget(self.open_button)
 
+        # メインレイアウトの構築
         main_layout = QVBoxLayout()
-        main_layout.addWidget(self.status_label)
+        main_layout.addLayout(button_layout) # ボタンレイアウトを上部に配置
         main_layout.addWidget(self.main_splitter)
         main_layout.addWidget(self.h_scrollbar)
-        main_layout.addLayout(button_layout)
-        
+        main_layout.addWidget(self.status_label) # ステータスバーは最下部のまま
+
         container = QWidget()
         container.setLayout(main_layout)
         self.setCentralWidget(container)
@@ -159,6 +173,8 @@ class MainWindow(QMainWindow):
             self.midi_manager = None
         
         self.timeline_widget.set_current_time(self.current_playback_time)
+
+  
 
 
     # --- アクションとメニューの設定メソッド ---
