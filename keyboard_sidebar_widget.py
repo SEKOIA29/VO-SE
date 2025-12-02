@@ -11,23 +11,19 @@ class KeyboardSidebarWidget(QWidget):
         self.setFixedWidth(60)
 
     def sizeHint(self) -> QSize:
-        """Qtのレイアウトシステムに推奨サイズを伝える"""
         return QSize(60, 200)
 
     @Slot(int)
     def set_scroll_y_offset(self, offset_pixels: int):
-        """タイムラインウィジェットの垂直スクロールに合わせて、鍵盤の位置を更新する"""
         self.scroll_y_offset = offset_pixels
         self.update()
 
     @Slot(float)
     def set_key_height_pixels(self, height: float):
-        """タイムラインウィジェットの垂直ズームに合わせて、鍵盤の高さを更新する"""
         self.key_height_pixels = height
         self.update()
 
     def paintEvent(self, event: QPaintEvent):
-        """ウィジェットの描画イベント"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setClipRect(event.rect())
@@ -41,6 +37,7 @@ class KeyboardSidebarWidget(QWidget):
             y_pos = (self.lowest_note_display + 1 - note_number) * self.key_height_pixels - self.scroll_y_offset
             key_rect = QRect(0, int(y_pos), self.width(), int(self.key_height_pixels))
             
+            # 白鍵の色はデフォルトのままでOK
             painter.setBrush(QBrush(Qt.white))
             painter.setPen(QPen(Qt.gray))
             painter.drawRect(key_rect)
@@ -50,7 +47,6 @@ class KeyboardSidebarWidget(QWidget):
             note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
             octave = (note_number // 12) - 1
             name = f"{note_names[pitch_class]}{octave}"
-            # テキストを鍵盤の中央に配置
             painter.drawText(key_rect, Qt.AlignRight | Qt.AlignVCenter, name)
 
         # 次に黒鍵を描画する（白鍵の上に重なるように）
@@ -60,9 +56,10 @@ class KeyboardSidebarWidget(QWidget):
             if not is_black_key: continue
             
             y_pos = (self.lowest_note_display + 1 - note_number) * self.key_height_pixels - self.scroll_y_offset
-            # 黒鍵は白鍵よりも幅を狭く設定
             key_rect = QRect(0, int(y_pos), int(self.width() * 0.65), int(self.key_height_pixels))
 
+            # 黒鍵の色はデフォルトのままでOK
             painter.setBrush(QBrush(Qt.black))
             painter.setPen(QPen(Qt.black))
             painter.drawRect(key_rect)
+
