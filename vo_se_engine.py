@@ -112,9 +112,16 @@ class VO_SE_Engine:
         
         char_info = self.characters[self.active_character_id]
         waveform_type = char_info.waveform_type
+       # ★修正箇所: 前回の位相を取得し、存在しなければ計算する
+        note_id = (note.note_number, note.start_time, note.duration) # ノートを一意に識別するキー
+        if note_id in self.note_phases:
+            phase = self.note_phases[note_id]
+        else:
+            # そのノートが最初に再生される場合、開始時点からの位相を計算して初期値とする
+            # （簡易的に0から開始するのではなく、スタート位置の波形角度を合わせる）
+            phase = (start_time_sec - note.start_time) * base_hz * 2 * np.pi 
+            self.note_phases[note_id] = phase
 
-     
-        phase = 0.0 
 
         for i in range(duration_samples):
             # i はチャンク内でのサンプルオフセット
@@ -162,7 +169,10 @@ class VO_SE_Engine:
             waveform[i] = sample_value * envelope_value * 0.5 * (note.velocity / 127.0)
 
    
+        self.note_phases[note_id] = phase
+        
         return waveform.astype(np.float32)
+
 
 
 
