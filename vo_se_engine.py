@@ -187,39 +187,46 @@ class VO_SE_Engine:
     def _pyaudio_callback(self, in_data, frame_count, time_info, status):
         """PyAudioによって別スレッドで呼び出され、次のオーディオバッファを生成する"""
         
-        # frame_count: 次に生成すべきサンプル数
         audio_data = np.zeros(frame_count, dtype=np.float32)
         
-        # 現在の時刻範囲を計算
         start_time_chunk = self.current_time_playback
         end_time_chunk = start_time_chunk + (frame_count / self.sample_rate)
 
         for note in self.notes_to_play:
             # チャンクと重なる音符のみを処理
             if note.start_time + note.duration > start_time_chunk and note.start_time < end_time_chunk:
-                # この音符がチャンク内で始まる相対時間を計算
-                note_start_in_chunk = max(0, int((note.start_time - start_time_chunk) * self.sample_rate))
                 
-                # 音符の合成（既存のヘルパー関数を再利用）
-                # ここでは音符全体ではなく、必要なチャンク部分だけを生成するように _generate_note_with_pitch_bend を調整するか、工夫が必要
-                
-                # 簡易的な実装として、音符全体を生成して切り貼りする方法:
-                note_buffer = self._generate_note_with_pitch_bend(note, self.pitch_data_to_play, 
-                                                                    duration_samples=int(note.duration * self.sample_rate))
-                
-                # チャンクへのコピー範囲を計算
-                copy_start = note_start_in_chunk
-                copy_end = min(frame_count, note_start_in_chunk + note_buffer.shape[0])
-                src_start = 0
-                src_end = copy_end - copy_start
+                # 音符の開始・終了時刻とチャンクの開始・終了時刻の重なり合う部分を計算
+                gen_start_sec = max(start_time_chunk, note.start_time)
+                gen_end_sec = min(end_time_chunk, note.start_time + note.duration)
 
-                if copy_start < copy_end:
-                    audio_data[copy_start:copy_end] += note_buffer[src_start:src_end]
+                if gen_start_sec >= gen_end_sec:
+                    continue
+                
+                # 修正したヘルパー関数を呼び出し、必要な時間範囲だけを生成させる
+                note_buffer = self._generate_note_with_pitch_bend(
+                    note, 
+                    self.pitch_data_to_play, 
+                    start_time_sec=gen_start_sec, # <-- ここを変更
+                    end_time_sec=gen_end_sec      # <-- ここを変更
+                )
+                
+                # 生成されたバッファを、チャンク内の正しい位置に加算する
+                # チャンク先頭からの相対サンプル位置
+                copy_start_in_chunk = int((gen_start_sec - start_time_chunk) * self.sample_rate)
+                copy_end_in_chunk = copy_start_in_chunk + note_buffer.shape[0]
+
+                if copy_start_in_chunk < frame_count and copy_end_in_chunk > 0:
+                     # 範囲チェックを行いながら加算
+                    valid_copy_end = min(frame_count, copy_end_in_chunk)
+                    valid_src_end = valid_copy_end - copy_start_in_chunk
+
+                    audio_data[copy_start_in_chunk:valid_copy_end] += note_buffer[:valid_src_end]
         
         # 再生時間を更新
         self.current_time_playback = end_time_chunk
 
-        # PyAudioにデータを返す
         return audio_data.tobytes(), pyaudio.paContinue
+
 
 
