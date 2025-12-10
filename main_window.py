@@ -466,7 +466,7 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 self.status_label.setText(f"MIDIファイル保存エラー: {e}")
 
-    @Slot()
+        @Slot()
     def open_file_dialog_and_load_midi(self):
         """ファイルダイアログを開き、MIDIファイルまたはJSONプロジェクトファイルを読み込む。"""
         filepath, _ = QFileDialog.getOpenFileName(
@@ -478,6 +478,7 @@ class MainWindow(QMainWindow):
             loaded_pitch_data = []
             loaded_tempo = None
 
+            # --- JSONプロジェクトファイルの読み込み処理 ---
             if filepath.lower().endswith('.json'):
                 try:
                     with open(filepath, 'r', encoding='utf-8') as f:
@@ -496,8 +497,10 @@ class MainWindow(QMainWindow):
                     self.status_label.setText(f"JSONファイルの読み込みエラー: {e}")
                     return
 
+            # --- 標準MIDIファイルの読み込み処理 ---
             elif filepath.lower().endswith(('.mid', '.midi')):
                 try:
+                    # MIDIファイルからテンポ情報を取得
                     mid = mido.MidiFile(filepath)
                     for track in mid.tracks:
                         for msg in track:
@@ -506,26 +509,33 @@ class MainWindow(QMainWindow):
                                 break
                         if loaded_tempo: break
                     
+                    # MIDIファイルからノートデータを取得 (midi_managerのヘルパー関数を使用)
                     data_dicts = load_midi_file(filepath)
+                    # ★注: load_midi_fileはdictを返すため、NoteEventオブジェクトに変換し直す
                     if data_dicts:
                         notes_list = [NoteEvent.from_dict(d) for d in data_dicts]
                         self.status_label.setText(f"MIDIファイルの読み込み完了。イベント数: {len(notes_list)}")
                 except Exception as e:
                      self.status_label.setText(f"MIDIファイルの読み込みエラー: {e}")
 
+            # --- 読み込んだデータをUIとエンジンに反映させる ---
             if notes_list or loaded_pitch_data:
+                # 既存のデータをクリアし、新しいデータをセット
                 self.timeline_widget.set_notes(notes_list)
                 self.pitch_data = loaded_pitch_data
                 self.graph_editor_widget.set_pitch_events(self.pitch_data)
 
+                # テンポ情報があれば反映
                 if loaded_tempo is not None:
                     try:
                         new_tempo = float(loaded_tempo)
                         self.tempo_input.setText(str(new_tempo))
+                        # update_tempo_from_inputを呼び出して全ウィジェットに反映
                         self.update_tempo_from_input() 
                     except ValueError:
                         self.status_label.setText("警告: テンポ情報が無効なため、デフォルトテンポを使用します。")
 
+                # スクロールバーの範囲を更新
                 self.update_scrollbar_range()
                 self.update_scrollbar_v_range()
 
