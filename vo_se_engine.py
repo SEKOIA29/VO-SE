@@ -8,12 +8,16 @@ from data_models import CharacterInfo, NoteEvent, PitchEvent # data_modelsから
 
 class VO_SE_Engine:
         def __init__(self, sample_rate=44100):
-        # ... (中略) ...
+        self.sample_rate = sample_rate
+        # self._load_character_data() を呼び出してキャラクターデータをロードする
+        self.characters = self._load_character_data() 
+        self.active_character_id = None
         self.pyaudio_instance = pyaudio.PyAudio()
         self.tempo = 120.0 
         self.current_time_playback = 0.0 
         self.notes_to_play = []        
-        self.pitch_data_to_play = []   
+        self.pitch_data_to_play = []  
+        self.note_phases = {} 
 
         self.stream = self.pyaudio_instance.open(format=pyaudio.paFloat32,
                                   channels=1,
