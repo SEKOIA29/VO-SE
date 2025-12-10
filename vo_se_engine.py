@@ -7,20 +7,23 @@ import os
 from data_models import CharacterInfo, NoteEvent, PitchEvent # data_modelsから必要なクラスをインポート
 
 class VO_SE_Engine:
-    def __init__(self, sample_rate=44100):
-        self.sample_rate = sample_rate
-        # self._load_character_data() を呼び出してキャラクターデータをロードする
-        self.characters = self._load_character_data() 
-        self.active_character_id = None
+        def __init__(self, sample_rate=44100):
+        # ... (中略) ...
         self.pyaudio_instance = pyaudio.PyAudio()
-        self.tempo = 120.0 # テンポを追加
+        self.tempo = 120.0 
+        self.current_time_playback = 0.0 
+        self.notes_to_play = []        
+        self.pitch_data_to_play = []   
 
-        # pyaudio ストリームを初期化時に開いておく
         self.stream = self.pyaudio_instance.open(format=pyaudio.paFloat32,
                                   channels=1,
                                   rate=self.sample_rate,
                                   output=True,
-                                  frames_per_buffer=1024)
+                                  frames_per_buffer=1024,
+                                  stream_callback=self._pyaudio_callback) 
+        self.stream.stop_stream()
+
+
 
     def _load_character_data(self):
         """キャラクターデータをハードコード（またはファイルから読み込む）ヘルパーメソッド"""
