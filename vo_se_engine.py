@@ -134,12 +134,7 @@ class VO_SE_Engine:
 
 
 
-    def play_audio(self, audio_data: np.ndarray):
-        """生成されたオーディオデータを再生するヘルパー関数（別スレッドから呼び出す）"""
-        # __init__で開いたストリームを使用
-        if self.stream.is_active():
-            self.stream.write(audio_data.tobytes())
-
+   
     def close(self):
         """終了処理"""
         if self.stream and self.stream.is_active():
@@ -158,4 +153,45 @@ class VO_SE_Engine:
     def stop_playback_stream(self):
         if self.stream.is_active():
             self.stream.stop_stream()
+
+
+
+    def _pyaudio_callback(self, in_data, frame_count, time_info, status):
+        """PyAudioによって別スレッドで呼び出され、次のオーディオバッファを生成する"""
+        
+        # frame_count: 次に生成すべきサンプル数
+        audio_data = np.zeros(frame_count, dtype=np.float32)
+        
+        # 現在の時刻範囲を計算
+        start_time_chunk = self.current_time_playback
+        end_time_chunk = start_time_chunk + (frame_count / self.sample_rate)
+
+        for note in self.notes_to_play:
+            # チャンクと重なる音符のみを処理
+            if note.start_time + note.duration > start_time_chunk and note.start_time < end_time_chunk:
+                # この音符がチャンク内で始まる相対時間を計算
+                note_start_in_chunk = max(0, int((note.start_time - start_time_chunk) * self.sample_rate))
+                
+                # 音符の合成（既存のヘルパー関数を再利用）
+                # ここでは音符全体ではなく、必要なチャンク部分だけを生成するように _generate_note_with_pitch_bend を調整するか、工夫が必要
+                
+                # 簡易的な実装として、音符全体を生成して切り貼りする方法:
+                note_buffer = self._generate_note_with_pitch_bend(note, self.pitch_data_to_play, 
+                                                                    duration_samples=int(note.duration * self.sample_rate))
+                
+                # チャンクへのコピー範囲を計算
+                copy_start = note_start_in_chunk
+                copy_end = min(frame_count, note_start_in_chunk + note_buffer.shape[0])
+                src_start = 0
+                src_end = copy_end - copy_start
+
+                if copy_start < copy_end:
+                    audio_data[copy_start:copy_end] += note_buffer[src_start:src_end]
+        
+        # 再生時間を更新
+        self.current_time_playback = end_time_chunk
+
+        # PyAudioにデータを返す
+        return audio_data.tobytes(), pyaudio.paContinue
+
 
