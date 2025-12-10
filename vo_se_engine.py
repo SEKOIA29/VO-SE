@@ -185,7 +185,9 @@ class VO_SE_Engine:
         if self.pyaudio_instance:
             self.pyaudio_instance.terminate()
 
-    def start_playback_stream(self, notes, pitch_data, start_time):
+     def start_playback_stream(self, notes, pitch_data, start_time):
+        self.note_phases = {} 
+
         self.notes_to_play = notes
         self.pitch_data_to_play = pitch_data
         self.current_time_playback = start_time
@@ -195,7 +197,7 @@ class VO_SE_Engine:
     def stop_playback_stream(self):
         if self.stream.is_active():
             self.stream.stop_stream()
-
+            self.note_phases = {}
 
 
     def _pyaudio_callback(self, in_data, frame_count, time_info, status):
