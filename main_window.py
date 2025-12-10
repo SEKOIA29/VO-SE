@@ -554,10 +554,11 @@ class MainWindow(QMainWindow):
             new_tempo = float(self.tempo_input.text())
             if 30.0 <= new_tempo <= 300.0:
                 self.timeline_widget.tempo = new_tempo
-                self.vo_se_engine.set_tempo(new_tempo) # エンジンにも通知
-                # GraphEditorWidgetにもテンポを通知する必要があればここに追加
-                # self.graph_editor_widget.tempo = new_tempo # 必要ならコメントを外す
+                self.vo_se_engine.set_tempo(new_tempo)
                 
+                # ★修正箇所: GraphEditorWidgetにもテンポを通知する
+                self.graph_editor_widget.tempo = new_tempo # コメントアウトを外す
+
                 self.update_scrollbar_range()
                 self.status_label.setText(f"テンポを {new_tempo} BPM に更新しました。")
             else:
