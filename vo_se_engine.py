@@ -133,8 +133,6 @@ class VO_SE_Engine:
         return (waveform * envelope * 0.5 * (note.velocity / 127.0)).astype(np.float32)
 
 
-    # generate_note_buffer は古いリアルタイム実装の一部のため削除
-
 
     def play_audio(self, audio_data: np.ndarray):
         """生成されたオーディオデータを再生するヘルパー関数（別スレッドから呼び出す）"""
@@ -149,3 +147,15 @@ class VO_SE_Engine:
             self.stream.close()
         if self.pyaudio_instance:
             self.pyaudio_instance.terminate()
+
+    def start_playback_stream(self, notes, pitch_data, start_time):
+        self.notes_to_play = notes
+        self.pitch_data_to_play = pitch_data
+        self.current_time_playback = start_time
+        if not self.stream.is_active():
+            self.stream.start_stream()
+
+    def stop_playback_stream(self):
+        if self.stream.is_active():
+            self.stream.stop_stream()
+
