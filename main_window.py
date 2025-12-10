@@ -304,9 +304,11 @@ class MainWindow(QMainWindow):
     def update_playback_cursor(self):
         """タイマーイベントごとに呼び出され、再生カーソル位置とGUIを同期更新する"""
         if self.is_playing:
-            current_system_time = time.time()
-            self.current_playback_time = current_system_time - self.start_time_real
-           # 再生時間を MM:SS.ms 形式にフォーマット
+            # --- 再生時刻の同期 ---
+            # システム時刻から計算するのではなく、VO_SE_Engineの現在時刻を取得する
+            self.current_playback_time = self.vo_se_engine.current_time_playback 
+           
+            # 再生時間を MM:SS.ms 形式にフォーマット
             mins = int(self.current_playback_time / 60)
             secs = int(self.current_playback_time % 60)
             msecs = int((self.current_playback_time - int(self.current_playback_time)) * 100)
@@ -315,16 +317,21 @@ class MainWindow(QMainWindow):
           
             
             # --- ループ処理のロジック ---
+            # ここではGUI側でループ範囲監視と巻き戻しを行う
             if self.is_looping:
                 project_start_time, project_end_time = self.timeline_widget.get_selected_notes_range()
                 
+                # 再生時間が終了範囲を超えたら、開始時間まで巻き戻す
                 if self.current_playback_time >= project_end_time and project_end_time > project_start_time:
                     self.current_playback_time = project_start_time
-                    self.start_time_real = time.time() - self.current_playback_time
+                    # VO_SE_Engineの内部時刻も巻き戻す必要がある
+                    self.vo_se_engine.current_time_playback = self.current_playback_time 
                 
+                # 再生時間が開始範囲より前なら、開始時間まで進める (通常は発生しない想定だが安全策)
                 if self.current_playback_time < project_start_time:
                     self.current_playback_time = project_start_time
-                    self.start_time_real = time.time() - self.current_playback_time
+                    # VO_SE_Engineの内部時刻も巻き戻す必要がある
+                    self.vo_se_engine.current_time_playback = self.current_playback_time 
 
             # --- GUIの更新と自動スクロール ---
             self.timeline_widget.set_current_time(self.current_playback_time)
@@ -334,10 +341,16 @@ class MainWindow(QMainWindow):
             current_beats = self.timeline_widget.seconds_to_beats(self.current_playback_time)
             cursor_x_pos = current_beats * self.timeline_widget.pixels_per_beat
             viewport_width = self.timeline_widget.width()
+            
+            # カーソルがビューポートの中心に来るようにスクロール位置を計算
             target_scroll_x = cursor_x_pos - (viewport_width / 2)
+            
+            # スクロールバーの有効範囲に収める
             max_scroll_value = self.h_scrollbar.maximum()
             min_scroll_value = self.h_scrollbar.minimum()
             clamped_scroll_x = max(min_scroll_value, min(max_scroll_value, target_scroll_x))
+            
+            # スクロールバーの値を設定（GUIが自動的にスクロールする）
             self.h_scrollbar.setValue(int(clamped_scroll_x))
 
 
