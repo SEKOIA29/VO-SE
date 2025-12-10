@@ -84,12 +84,24 @@ class VO_SE_Engine:
                 audio_data[note_start_sample:end_index] += note_buffer[:src_end_index]
 
         return audio_data
+            
 
-    def _generate_note_with_pitch_bend(self, note: NoteEvent, pitch_events: list[PitchEvent], duration_samples: int) -> np.ndarray:
+       def _generate_note_with_pitch_bend(self, 
+                                       note: NoteEvent, 
+                                       pitch_events: list[PitchEvent], 
+                                       # duration_samples: int # <-- この引数を削除
+                                       start_time_sec: float, # <-- 開始時刻を追加
+                                       end_time_sec: float    # <-- 終了時刻を追加
+                                      ) -> np.ndarray:
         """
-        単一のノートに対して、ピッチベンドとキャラクターの波形タイプを適用した波形を生成するヘルパー関数。
+        単一のノートに対して、指定された時間範囲のピッチベンドとキャラクターの波形タイプを適用した波形を生成するヘルパー関数。
         """
         
+        # 指定範囲のサンプル数を計算
+        duration_samples = int((end_time_sec - start_time_sec) * self.sample_rate)
+        if duration_samples <= 0:
+            return np.zeros(0, dtype=np.float32)
+
         waveform = np.zeros(duration_samples, dtype=np.float32)
         base_hz = self.value_to_hz(note.note_number)
         sorted_pitch_events = sorted(pitch_events, key=lambda p: p.time)
@@ -97,11 +109,29 @@ class VO_SE_Engine:
         char_info = self.characters[self.active_character_id]
         waveform_type = char_info.waveform_type
 
-        phase = 0.0
+     
+        phase = 0.0 
 
         for i in range(duration_samples):
-            current_time = note.start_time + (i / self.sample_rate)
+            # i はチャンク内でのサンプルオフセット
+            # current_time は絶対時間
+            current_time = start_time_sec + (i / self.sample_rate)
             
+            # --- ノートのエンベロープ（音量）計算 ---
+            # ノート全体の開始・終了に対する現在の位置に基づいて音量を調整する
+            note_pos = current_time - note.start_time
+            note_dur = note.duration
+            envelope_value = 1.0
+            fade_len_sec = 0.01
+            
+            if note_pos < fade_len_sec:
+                envelope_value = note_pos / fade_len_sec
+            elif note_pos > note_dur - fade_len_sec:
+                envelope_value = (note_dur - note_pos) / fade_len_sec
+            
+            if envelope_value < 0: envelope_value = 0 # 念のため
+
+            # --- ピッチベンド値の計算 ---
             current_pitch_value = 0 
             for p_event in sorted_pitch_events:
                 if p_event.time <= current_time:
@@ -110,27 +140,25 @@ class VO_SE_Engine:
                     break
 
             current_hz = self.apply_pitch_bend(base_hz, current_pitch_value)
-            
-            # 位相の更新: phase += (2 * pi * frequency / sample_rate)
+            ）
+                
             phase += (2 * np.pi * current_hz / self.sample_rate)
             
             if waveform_type == "sine":
-                waveform[i] = np.sin(phase)
+                sample_value = np.sin(phase)
             elif waveform_type == "square":
-                waveform[i] = np.sign(np.sin(phase))
+                sample_value = np.sign(np.sin(phase))
             elif waveform_type == "sawtooth":
                 normalized_phase = np.mod(phase / (2 * np.pi), 1.0)
-                waveform[i] = 2 * (normalized_phase - 0.5)
+                sample_value = 2 * (normalized_phase - 0.5)
             else:
-                waveform[i] = np.sin(phase)
+                sample_value = np.sin(phase)
 
-        # エンベロープ適用（簡易的なフェードイン・アウト）
-        fade_len = int(min(0.01, note.duration / 2.0) * self.sample_rate)
-        envelope = np.ones(duration_samples)
-        envelope[:fade_len] = np.linspace(0, 1, fade_len)
-        envelope[-fade_len:] = np.linspace(1, 0, fade_len)
-        
-        return (waveform * envelope * 0.5 * (note.velocity / 127.0)).astype(np.float32)
+            # 音量とベロシティを適用して波形に格納
+            waveform[i] = sample_value * envelope_value * 0.5 * (note.velocity / 127.0)
+
+   
+        return waveform.astype(np.float32)
 
 
 
