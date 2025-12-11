@@ -112,6 +112,11 @@ class MainWindow(QMainWindow):
         self.character_selector.currentIndexChanged.connect(self.on_character_changed)
         button_layout.addWidget(self.character_selector) 
 
+      　 #  MIDIポート選択UIの追加
+        self.midi_port_selector = QComboBox(self)
+        self.midi_port_selector.currentIndexChanged.connect(self.on_midi_port_changed)
+        button_layout.addWidget(self.midi_port_selector)
+
         #テンポ表示
         button_layout.addWidget(self.tempo_label)
         button_layout.addWidget(self.tempo_input)
@@ -185,7 +190,7 @@ class MainWindow(QMainWindow):
         self.paste_action = QAction("ペースト", self)
         self.paste_action.setShortcuts(QKeySequence.StandardKey.Paste)
         self.paste_action.triggered.connect(self.timeline_widget.paste_notes_from_clipboard)
-        self.save_action = QAction("プロジェクト保存(&S)", self)
+        self.save_action = QAction("プロジェクトを保存(&S)", self)
         self.save_action.setShortcuts(QKeySequence.StandardKey.Save)
         self.save_action.triggered.connect(self.save_file_dialog_and_save_midi)
 
