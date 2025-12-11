@@ -377,3 +377,52 @@ class TimelineWidget(QWidget):
         max_end = max(end_times) if end_times else 0.0
         
         return min_start, max_end
+
+    
+
+    def wheelEvent(self, event: QWheelEvent):
+        """マウスホイールイベントを処理してズームまたは垂直スクロールを行う"""
+        
+        # Ctrlキーを押しながらホイールした場合、水平ズーム
+        if event.modifiers() == Qt.ControlModifier:
+            delta_beats = event.angleDelta().y() / 120.0
+            zoom_factor = 1.1 if delta_beats > 0 else (1.0 / 1.1)
+            
+            # ズームの中心位置（ビート）を計算する
+            mouse_x_pos = event.position().x()
+            current_beat_at_mouse = (mouse_x_pos + self.scroll_x_offset) / self.pixels_per_beat
+            
+            self.pixels_per_beat *= zoom_factor
+            
+            # ズーム範囲の制限
+            self.pixels_per_beat = max(10.0, min(200.0, self.pixels_per_beat))
+
+            # ズームの中心を維持するようにスクロール位置を調整
+            new_scroll_x_offset = (current_beat_at_mouse * self.pixels_per_beat) - mouse_x_pos
+            self.scroll_x_offset = int(new_scroll_x_offset)
+            
+            # MainWindowにズーム変更を通知
+            self.zoom_changed_signal.emit()
+            self.update()
+            
+        # Shiftキーを押しながらホイールした場合、垂直ズーム（鍵盤の高さ）
+        elif event.modifiers() == Qt.ShiftModifier:
+            delta_pixels = event.angleDelta().y() / 120.0
+            if delta_pixels > 0:
+                self.key_height_pixels += 1.0
+            else:
+                self.key_height_pixels -= 1.0
+
+            # 高さの範囲制限
+            self.key_height_pixels = max(8.0, min(30.0, self.key_height_pixels))
+            
+            # MainWindowに垂直ズーム変更を通知
+            self.vertical_zoom_changed_signal.emit()
+            self.update()
+
+        # 修飾キーなしの場合、デフォルトの垂直スクロール動作を維持
+        else:
+            event.ignore()
+            # QWidgetのデフォルト動作を呼び出す
+            # super().wheelEvent(event) # デフォルトのスクロールバー連携はMainWindowで行うため不要
+
