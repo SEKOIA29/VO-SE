@@ -613,6 +613,24 @@ class MainWindow(QMainWindow):
             self.status_label.setText(f"ノートオン: {note_number} (Velocity: {velocity})")
         elif event_type == 'off':
             self.status_label.setText(f"ノートオフ: {note_number}")
+          
+
+    @Slot()
+    def on_midi_port_changed(self):
+        """MIDIポート選択コンボボックスの変更ハンドラ"""
+        selected_port_name = self.midi_port_selector.currentData()
+        
+        if self.midi_manager:
+            self.midi_manager.stop() # 現在のポートを停止
+            self.midi_manager = None
+
+        if selected_port_name and selected_port_name != "ポートなし":
+            self.midi_manager = MidiInputManager(selected_port_name)
+            self.midi_manager.start() # 新しいポートで開始
+            self.status_label.setText(f"MIDIポート: {selected_port_name} に接続済み")
+        else:
+             self.status_label.setText("警告: 有効なMIDIポートが選択されていません。")
+
     
 
 
