@@ -29,14 +29,14 @@ class MainWindow(QMainWindow):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("統合MIDIアプリケーション")
+        self.setWindowTitle("VO-SE Pro")
         self.setGeometry(100, 100, 700, 400)
         
         self.vo_se_engine = VO_SE_Engine()
         self.pitch_data = [] # self.pitch_data をここで初期化
 
         # --- UIコンポーネントの初期化 ---
-        self.status_label = QLabel("アプリケーション起動中...", self) # ステータスバーとして最下部に配置
+        self.status_label = QLabel("起動中... =」", self) # ステータスバーとして最下部に配置
         
         # ★GUI改修案1: 再生時間表示ラベルを追加
         self.time_display_label = QLabel("00:00.00", self) 
@@ -164,17 +164,24 @@ class MainWindow(QMainWindow):
         
         self.graph_editor_widget.pitch_data_changed.connect(self.on_pitch_data_updated)
 
-        # --- MIDI入力マネージャーの起動 (自動ポート検出) ---
+
+        # --- MIDI入力マネージャーの起動 (MIDI接続)---
         available_ports = MidiInputManager.get_available_ports()
         if available_ports:
-            selected_port_name = available_ports if isinstance(available_ports, list) else available_ports
-            print(f"MIDIポート '{selected_port_name}' に自動接続します。")
-            self.status_label.setText(f"MIDIポート: {selected_port_name} に接続済み")
-            self.midi_manager = MidiInputManager(selected_port_name)
-            self.midi_manager.start()
+            # コンボボックスにポート名を追加
+            for port_name in available_ports:
+                self.midi_port_selector.addItem(port_name, userData=port_name)
+            
+            # 最初のポートをデフォルトで選択し、接続を開始する
+            # on_midi_port_changed スロットが自動的に呼び出される
+            # self.midi_port_selector.setCurrentIndex(0) 
+
         else:
+            # ポートが見つからない場合の処理
             print("利用可能なMIDIポートが見つかりませんでした。")
             self.status_label.setText("警告: MIDIポートが見つかりません。")
+            self.midi_port_selector.addItem("ポートなし")
+            self.midi_port_selector.setEnabled(False)
             self.midi_manager = None
         
         self.timeline_widget.set_current_time(self.current_playback_time)
