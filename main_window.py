@@ -526,6 +526,11 @@ class MainWindow(QMainWindow):
                     # ★注: load_midi_fileはdictを返すため、NoteEventオブジェクトに変換し直す
                     if data_dicts:
                         notes_list = [NoteEvent.from_dict(d) for d in data_dicts]
+                      
+                      　for note in notes_list:
+                        if note.lyrics and not note.phonemes: # 歌詞はあるが音素がない場合
+                            note.phonemes = self._get_yomi_from_lyrics(note.lyrics)
+                          
                         self.status_label.setText(f"MIDIファイルの読み込み完了。イベント数: {len(notes_list)}")
                 except Exception as e:
                      self.status_label.setText(f"MIDIファイルの読み込みエラー: {e}")
