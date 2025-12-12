@@ -1,3 +1,5 @@
+# data_models.py
+
 class PitchEvent:
     """
     ピッチベンドのデータ構造を定義するクラス
@@ -17,23 +19,24 @@ class PitchEvent:
         return PitchEvent(data['time'], data['value'])
 
 
-
-
 class NoteEvent:
     """
     ボーカロイドの音符（ノート）のデータ構造を定義するクラス
     """
-    def __init__(self, note_number: int, start_time: float, duration: float, velocity: int, lyrics: str = ""):
+    # ★修正: phonemes を引数とプロパティに追加
+    def __init__(self, note_number: int, start_time: float, duration: float, velocity: int, lyrics: str = "", phonemes: list[str] = None):
         self.note_number = note_number
         self.start_time = start_time
         self.duration = duration
         self.velocity = velocity
         self.lyrics = lyrics
+        # ★修正: デフォルト値を None から [] に変更
+        self.phonemes = phonemes if phonemes is not None else [] 
         self.is_selected = False # GUI操作のための情報
         self.is_playing = False  # 追加: 再生中かどうかのフラグ
 
     def __repr__(self):
-        return f"Note(pitch={self.note_number}, start={self.start_time:.2f}s, dur={self.duration:.2f}s, lyric='{self.lyrics}')"
+        return f"Note(pitch={self.note_number}, start={self.start_time:.2f}s, dur={self.duration:.2f}s, lyric='{self.lyrics}', phonemes={self.phonemes})"
     
     def to_dict(self):
         """クリップボードやファイル保存用に、辞書（JSON形式）に変換するメソッド"""
@@ -42,7 +45,8 @@ class NoteEvent:
             "start": self.start_time,
             "duration": self.duration,
             "velocity": self.velocity,
-            "lyrics": self.lyrics
+            "lyrics": self.lyrics,
+            "phonemes": self.phonemes # ★追加
         }
         
     @staticmethod
@@ -53,9 +57,9 @@ class NoteEvent:
             data['start'],
             data['duration'],
             data['velocity'],
-            data.get('lyrics', '')
+            data.get('lyrics', ''),
+            data.get('phonemes', []) # ★追加: デフォルト値として空のリストを設定
         )
-
 
 
 class CharacterInfo:
@@ -63,6 +67,5 @@ class CharacterInfo:
         self.char_id = char_id
         self.name = name
         self.description = description
-        # engine_params のデフォルト値を設定する際に、引数のデフォルト値 (None) を使用するように修正
         self.engine_params = engine_params if engine_params is not None else {} 
         self.waveform_type = waveform_type # 'sine', 'square', 'sawtooth'などを想定
