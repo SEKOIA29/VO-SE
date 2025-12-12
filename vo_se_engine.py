@@ -98,23 +98,20 @@ class VO_SE_Engine:
         return audio_data
             
 
-       def _generate_note_with_pitch_bend(self, 
+           def _generate_note_with_pitch_bend(self, 
                                        note: NoteEvent, 
                                        pitch_events: list[PitchEvent], 
-                                       # 引数をduration_samplesに戻します。リアルタイム対応は一旦ペンディング
-                                       duration_samples: int 
+                                       duration_samples: int # 生成すべき最終的なサンプル数
                                       ) -> np.ndarray:
         
-        # waveform_type が 'sample_based' の場合にこの新しいロジックを使用
+        # 'sample_based' 以外の場合は、サイン波生成のフォールバックメソッドを呼び出す
         if self.characters[self.active_character_id].waveform_type != "sample_based":
-            # 以前のサイン波ロジックに戻すか、エラーを出す
-            return self._generate_synth_note(note, pitch_events, duration_samples) # 仮のヘルパー関数が必要
+            return self._generate_synth_note(note, pitch_events, duration_samples)
 
-        # --- 新しいサンプルベースの合成ロジック ---
         audio_data = np.zeros(duration_samples, dtype=np.float32)
         char_id = self.active_character_id
         
-        if not note.phonemes: return audio_data # 音素がない場合は終了
+        if not note.phonemes: return audio_data
 
         # 音素のタイミングを均等割り当てで計算
         samples_per_phoneme = duration_samples / len(note.phonemes)
@@ -126,35 +123,42 @@ class VO_SE_Engine:
                 current_sample_pos += samples_per_phoneme
                 continue
             
-            # 音源を取得
             sample_data = self.audio_samples[char_id][phoneme]
             target_length = int(samples_per_phoneme)
             
-            # ★TODO: ここでピッチシフトと時間伸縮を行う必要がある
-            # 現状は単純にリサイズするだけなので、音の高さが変わる（不自然）
+            # ★時間伸縮（リサンプリングによる単純な速度調整）
             processed_sample = np.interp(
                 np.linspace(0, len(sample_data), target_length),
                 np.arange(len(sample_data)),
                 sample_data
             )
             
-            # オーディオデータに結合（TODO: クロスフェードが必要）
-            end_pos = int(current_sample_pos + target_length)
+            # TODO: クロスフェードはまだ実装していませんが、境界のノイズ低減のために簡易的なものを適用
+            if i > 0:
+                fade_len = min(int(self.sample_rate * 0.005), len(processed_sample), len(audio_data) - int(current_sample_pos)) # 5msクロスフェード
+                if fade_len > 0:
+                    fade_out = np.linspace(1.0, 0.0, fade_len)
+                    fade_in = np.linspace(0.0, 1.0, fade_len)
+                    # 重ね合わせ部分の処理
+                    overlap_pos = int(current_sample_pos - fade_len)
+                    audio_data[overlap_pos:int(current_sample_pos)] = audio_data[overlap_pos:int(current_sample_pos)] * fade_out + processed_sample[:fade_len] * fade_in
+                    processed_sample = processed_sample[fade_len:] # フェードイン部分は削除
+                    current_sample_pos += fade_len
+
+            # オーディオデータに結合
+            end_pos = int(current_sample_pos + len(processed_sample))
             if end_pos > duration_samples:
                 end_pos = duration_samples
-                target_length = end_pos - int(current_sample_pos)
-                processed_sample = processed_sample[:target_length]
+                processed_sample = processed_sample[:end_pos - int(current_sample_pos)]
             
-            if target_length > 0:
+            if len(processed_sample) > 0:
                 audio_data[int(current_sample_pos):end_pos] += processed_sample * (note.velocity / 127.0)
 
-            current_sample_pos += samples_per_phoneme
+            current_sample_pos += len(processed_sample)
             
-        # TODO: ピッチベンドの適用（合成後のオーディオデータ全体に対して行うか、生成時に適用するか）
+        # TODO: この段階ではピッチベンドは適用が難しい（合成後に全体のピッチを変えるか検討）
 
         return audio_data.astype(np.float32)
-
-
 
 
 
