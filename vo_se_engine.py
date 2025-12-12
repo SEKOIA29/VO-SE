@@ -33,13 +33,17 @@ class VO_SE_Engine:
 
 
 
-    def _load_character_data(self):
-        """キャラクターデータをハードコード（またはファイルから読み込む）ヘルパーメソッド"""
-        # 実際にはJSONファイルから読み込むことを想定しているかもしれませんが、ここではハードコード
+        def _load_character_data(self):
+        # engine_params に 'audio_dir' パスを追加
         return {
-            "char_001": CharacterInfo("char_001", "アオイ", "元気な女性ボーカル", waveform_type="sawtooth"),
-            "char_002": CharacterInfo("char_002", "ミライ", "落ち着いた男性ボーカル", waveform_type="square"),
+            "char_001": CharacterInfo("char_001", "アオイ", "元気な女性ボーカル", 
+                                      engine_params={"audio_dir": "./audio/aoi/"}, # ★修正
+                                      waveform_type="sample_based"), # ★修正: wave_typeも変更
+            "char_002": CharacterInfo("char_002", "ミライ", "落ち着いた男性ボーカル", 
+                                      engine_params={"audio_dir": "./audio/mirai/"}, # ★修正
+                                      waveform_type="sample_based"), # ★修正: wave_typeも変更
         }
+
 
     @Slot(float)
     def set_tempo(self, bpm: float):
