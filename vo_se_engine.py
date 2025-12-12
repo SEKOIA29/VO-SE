@@ -97,85 +97,60 @@ class VO_SE_Engine:
        def _generate_note_with_pitch_bend(self, 
                                        note: NoteEvent, 
                                        pitch_events: list[PitchEvent], 
-                                       # duration_samples: int # <-- この引数を削除
-                                       start_time_sec: float, # <-- 開始時刻を追加
-                                       end_time_sec: float    # <-- 終了時刻を追加
+                                       # 引数をduration_samplesに戻します。リアルタイム対応は一旦ペンディング
+                                       duration_samples: int 
                                       ) -> np.ndarray:
-        """
-        単一のノートに対して、指定された時間範囲のピッチベンドとキャラクターの波形タイプを適用した波形を生成するヘルパー関数。
-        """
         
-        # 指定範囲のサンプル数を計算
-        duration_samples = int((end_time_sec - start_time_sec) * self.sample_rate)
-        if duration_samples <= 0:
-            return np.zeros(0, dtype=np.float32)
+        # waveform_type が 'sample_based' の場合にこの新しいロジックを使用
+        if self.characters[self.active_character_id].waveform_type != "sample_based":
+            # 以前のサイン波ロジックに戻すか、エラーを出す
+            return self._generate_synth_note(note, pitch_events, duration_samples) # 仮のヘルパー関数が必要
 
-        waveform = np.zeros(duration_samples, dtype=np.float32)
-        base_hz = self.value_to_hz(note.note_number)
-        sorted_pitch_events = sorted(pitch_events, key=lambda p: p.time)
+        # --- 新しいサンプルベースの合成ロジック ---
+        audio_data = np.zeros(duration_samples, dtype=np.float32)
+        char_id = self.active_character_id
         
-        char_info = self.characters[self.active_character_id]
-        waveform_type = char_info.waveform_type
-       # ★修正箇所: 前回の位相を取得し、存在しなければ計算する
-        note_id = (note.note_number, note.start_time, note.duration) # ノートを一意に識別するキー
-        if note_id in self.note_phases:
-            phase = self.note_phases[note_id]
-        else:
-            # そのノートが最初に再生される場合、開始時点からの位相を計算して初期値とする
-            # （簡易的に0から開始するのではなく、スタート位置の波形角度を合わせる）
-            phase = (start_time_sec - note.start_time) * base_hz * 2 * np.pi 
-            self.note_phases[note_id] = phase
+        if not note.phonemes: return audio_data # 音素がない場合は終了
 
+        # 音素のタイミングを均等割り当てで計算
+        samples_per_phoneme = duration_samples / len(note.phonemes)
+        current_sample_pos = 0
 
-        for i in range(duration_samples):
-            # i はチャンク内でのサンプルオフセット
-            # current_time は絶対時間
-            current_time = start_time_sec + (i / self.sample_rate)
+        for i, phoneme in enumerate(note.phonemes):
+            if phoneme not in self.audio_samples.get(char_id, {}):
+                print(f"警告: 音素 '{phoneme}' の音源が見つかりません。")
+                current_sample_pos += samples_per_phoneme
+                continue
             
-            # --- ノートのエンベロープ（音量）計算 ---
-            # ノート全体の開始・終了に対する現在の位置に基づいて音量を調整する
-            note_pos = current_time - note.start_time
-            note_dur = note.duration
-            envelope_value = 1.0
-            fade_len_sec = 0.01
+            # 音源を取得
+            sample_data = self.audio_samples[char_id][phoneme]
+            target_length = int(samples_per_phoneme)
             
-            if note_pos < fade_len_sec:
-                envelope_value = note_pos / fade_len_sec
-            elif note_pos > note_dur - fade_len_sec:
-                envelope_value = (note_dur - note_pos) / fade_len_sec
+            # ★TODO: ここでピッチシフトと時間伸縮を行う必要がある
+            # 現状は単純にリサイズするだけなので、音の高さが変わる（不自然）
+            processed_sample = np.interp(
+                np.linspace(0, len(sample_data), target_length),
+                np.arange(len(sample_data)),
+                sample_data
+            )
             
-            if envelope_value < 0: envelope_value = 0 # 念のため
-
-            # --- ピッチベンド値の計算 ---
-            current_pitch_value = 0 
-            for p_event in sorted_pitch_events:
-                if p_event.time <= current_time:
-                    current_pitch_value = p_event.value
-                else:
-                    break
-
-            current_hz = self.apply_pitch_bend(base_hz, current_pitch_value)
-            ）
-                
-            phase += (2 * np.pi * current_hz / self.sample_rate)
+            # オーディオデータに結合（TODO: クロスフェードが必要）
+            end_pos = int(current_sample_pos + target_length)
+            if end_pos > duration_samples:
+                end_pos = duration_samples
+                target_length = end_pos - int(current_sample_pos)
+                processed_sample = processed_sample[:target_length]
             
-            if waveform_type == "sine":
-                sample_value = np.sin(phase)
-            elif waveform_type == "square":
-                sample_value = np.sign(np.sin(phase))
-            elif waveform_type == "sawtooth":
-                normalized_phase = np.mod(phase / (2 * np.pi), 1.0)
-                sample_value = 2 * (normalized_phase - 0.5)
-            else:
-                sample_value = np.sin(phase)
+            if target_length > 0:
+                audio_data[int(current_sample_pos):end_pos] += processed_sample * (note.velocity / 127.0)
 
-            # 音量とベロシティを適用して波形に格納
-            waveform[i] = sample_value * envelope_value * 0.5 * (note.velocity / 127.0)
+            current_sample_pos += samples_per_phoneme
+            
+        # TODO: ピッチベンドの適用（合成後のオーディオデータ全体に対して行うか、生成時に適用するか）
 
-   
-        self.note_phases[note_id] = phase
-        
-        return waveform.astype(np.float32)
+        return audio_data.astype(np.float32)
+
+
 
 
 
