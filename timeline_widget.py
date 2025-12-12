@@ -3,9 +3,7 @@ from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLineEdit
 from PySide6.QtCore import Qt, QRect, QPoint, QEvent, Slot, Signal, QSize, QWheelEvent
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QMouseEvent, QPaintEvent, QKeyEvent, QClipboard, QWheelEvent
 from data_models import NoteEvent
-from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLineEdit
-from PySide6.QtCore import Qt, QRect, QPoint, QEvent, Slot, Signal, QSize, QWheelEvent
-
+from janome.tokenizer import Tokenizer
 
 class TimelineWidget(QWidget):
     zoom_changed_signal = Signal()
