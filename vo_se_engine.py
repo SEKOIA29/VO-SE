@@ -4,6 +4,7 @@ import numpy as np
 import pyaudio
 import json
 import os
+import soundfile as sf 
 from data_models import CharacterInfo, NoteEvent, PitchEvent # data_modelsから必要なクラスをインポート
 
 class VO_SE_Engine:
@@ -18,6 +19,9 @@ class VO_SE_Engine:
         self.notes_to_play = []        
         self.pitch_data_to_play = []  
         self.note_phases = {} 
+        
+        self.audio_samples = {} #wavデータを保持する辞書
+        self._load_all_character_samples() #全音源を読み込むメソッドを呼び出す
 
         self.stream = self.pyaudio_instance.open(format=pyaudio.paFloat32,
                                   channels=1,
@@ -243,6 +247,32 @@ class VO_SE_Engine:
         self.current_time_playback = end_time_chunk
 
         return audio_data.tobytes(), pyaudio.paContinue
+
+
+
+
+    def _load_all_character_samples(self):
+        """全てのキャラクターの音源サンプルを読み込み、メモリにキャッシュする"""
+        for char_id, char_info in self.characters.items():
+            audio_dir = char_info.engine_params.get("audio_dir")
+            if audio_dir and os.path.isdir(audio_dir):
+                self.audio_samples[char_id] = {}
+                for filename in os.listdir(audio_dir):
+                    if filename.endswith(".wav"):
+                        phoneme_name = filename[:-4] # ファイル名から拡張子を削除
+                        filepath = os.path.join(audio_dir, filename)
+                        try:
+                            data, sr = sf.read(filepath)
+                            if data.ndim > 1: data = data.mean(axis=1)
+                            # サンプリングレートの不一致を警告
+                            if sr != self.sample_rate:
+                                print(f"警告: {filename} のSRが一致しません ({sr}Hz != {self.sample_rate}Hz)")
+                            self.audio_samples[char_id][phoneme_name] = data
+                        except Exception as e:
+                            print(f"音源読み込みエラー {filepath}: {e}")
+            print(f"'{char_info.name}' の音源を {len(self.audio_samples.get(char_id, {}))} 件読み込みました。")
+
+
 
 
 
