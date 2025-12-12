@@ -249,5 +249,60 @@ class VO_SE_Engine:
 
 
 
+      def _generate_synth_note(self, note: NoteEvent, pitch_events: list[PitchEvent], duration_samples: int) -> np.ndarray:
+        """
+        サイン波/矩形波による単音生成ヘルパー関数（フォールバック用）
+        """
+        
+        waveform = np.zeros(duration_samples, dtype=np.float32)
+        base_hz = self.value_to_hz(note.note_number)
+        sorted_pitch_events = sorted(pitch_events, key=lambda p: p.time)
+        
+        char_info = self.characters[self.active_character_id]
+        # waveform_type はこのメソッド内では 'sine', 'square', 'sawtooth' のいずれかを想定
+        waveform_type = char_info.waveform_type 
+
+        phase = 0.0
+
+        for i in range(duration_samples):
+            current_time = note.start_time + (i / self.sample_rate)
+            
+            current_pitch_value = 0 
+            for p_event in sorted_pitch_events:
+                if p_event.time <= current_time:
+                    current_pitch_value = p_event.value
+                else:
+                    break
+
+            current_hz = self.apply_pitch_bend(base_hz, current_pitch_value)
+            
+            # 位相の更新: phase += (2 * pi * frequency / sample_rate)
+            phase += (2 * np.pi * current_hz / self.sample_rate)
+            
+            if waveform_type == "sine":
+                waveform[i] = np.sin(phase)
+            elif waveform_type == "square":
+                waveform[i] = np.sign(np.sin(phase))
+            elif waveform_type == "sawtooth":
+                normalized_phase = np.mod(phase / (2 * np.pi), 1.0)
+                waveform[i] = 2 * (normalized_phase - 0.5)
+            else:
+                # デフォルトまたは未知の波形タイプの場合はサイン波を使用
+                waveform[i] = np.sin(phase)
+
+        # エンベロープ適用（簡易的なフェードイン・アウト）
+        fade_len = int(min(0.01, note.duration / 2.0) * self.sample_rate)
+        envelope = np.ones(duration_samples)
+        if fade_len > 0:
+            envelope[:fade_len] = np.linspace(0, 1, fade_len)
+            envelope[-fade_len:] = np.linspace(1, 0, fade_len)
+        
+        return (waveform * envelope * 0.5 * (note.velocity / 127.0)).astype(np.float32)
+
+
+
+
+
+
 
 
