@@ -131,12 +131,15 @@ class TimelineWidget(QWidget):
         new_lyric, ok = QInputDialog.getText(self, "音符の作成", "歌詞を入力してください:", QLineEdit.Normal, "あ")
         
         if ok and new_lyric:
+            yomi_list = self._get_yomi_from_lyrics(new_lyric)
+
             new_note = NoteEvent(
                 note_number=note_number,
                 start_time=start_time,
                 duration=self.beats_to_seconds(self.quantize_resolution * 2),
                 velocity=100,
-                lyrics=new_lyric
+                lyrics=new_lyric,
+                phonemes=yomi_list 
             )
             self.notes_list.append(new_note)
             self.update()
