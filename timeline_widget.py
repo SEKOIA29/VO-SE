@@ -37,8 +37,22 @@ class TimelineWidget(QWidget):
         self.is_recording = False
         self.recording_start_system_time = 0.0
         self.open_recorded_notes = {}
+        self.tokenizer = Tokenizer() 
+
+    #---  ---
+
+    def _get_yomi_from_lyrics(self, lyrics: str) -> list[str]:
+        tokens = self.tokenizer.tokenize(lyrics)
+        yomi_list = []
+        for token in tokens:
+            # janomeの feature には '読み' が含まれている
+            yomi = token.read
+            if yomi:
+                # カタカナ1文字ずつに分割してリストに追加
+                yomi_list.extend(list(yomi))
+        return yomi_list
  
-    # --- ヘルパー関数群 ---
+    # --- SEKOIAとヘルパー関数の愉快な仲間達---
     def seconds_to_beats(self, seconds: float) -> float:
         seconds_per_beat = 60.0 / self.tempo
         return seconds / seconds_per_beat
@@ -205,6 +219,7 @@ class TimelineWidget(QWidget):
             painter.setPen(QPen(QColor(0, 0, 0), 1, Qt.DashLine))
             painter.setBrush(QColor(0, 100, 255, 80)) # 選択ボックス（半透明青）
             painter.drawRect(selection_rect)
+
 
     # --- (2) マウスイベント処理 ---
     def mousePressEvent(self, event: QMouseEvent):
