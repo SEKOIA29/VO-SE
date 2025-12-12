@@ -36,6 +36,7 @@ class NoteEvent:
         self.is_playing = False  # 追加: 再生中かどうかのフラグ
 
     def __repr__(self):
+        # phonemesの表示を追加
         return f"Note(pitch={self.note_number}, start={self.start_time:.2f}s, dur={self.duration:.2f}s, lyric='{self.lyrics}', phonemes={self.phonemes})"
     
     def to_dict(self):
@@ -68,4 +69,5 @@ class CharacterInfo:
         self.name = name
         self.description = description
         self.engine_params = engine_params if engine_params is not None else {} 
-        self.waveform_type = waveform_type # 'sine', 'square', 'sawtooth'などを想定
+        self.waveform_type = waveform_type # 'sine', 'square', 'sawtooth', 'sample_based'などを想定
+
