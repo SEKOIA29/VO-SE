@@ -1,5 +1,6 @@
 # vo_se_engine.py
 
+from typing import Self
 import numpy as np
 import pyaudio
 import json
@@ -8,22 +9,22 @@ import soundfile as sf
 from data_models import CharacterInfo, NoteEvent, PitchEvent # data_modelsから必要なクラスをインポート
 
 class VO_SE_Engine:
-        def __init__(self, sample_rate=44100):
-        self.sample_rate = sample_rate
+    def __init__(self, sample_rate=44100):
+        Self.sample_rate = sample_rate
         # self._load_character_data() を呼び出してキャラクターデータをロードする
-        self.characters = self._load_character_data() 
-        self.active_character_id = None
-        self.pyaudio_instance = pyaudio.PyAudio()
-        self.tempo = 120.0 
-        self.current_time_playback = 0.0 
-        self.notes_to_play = []        
-        self.pitch_data_to_play = []  
-        self.note_phases = {} 
+        Self.characters = Self._load_character_data() 
+        Self.active_character_id = None
+        Self.pyaudio_instance = pyaudio.PyAudio()
+        Self.tempo = 120.0 
+        Self.current_time_playback = 0.0 
+        Self.notes_to_play = []        
+        Self.pitch_data_to_play = []  
+        Self.note_phases = {} 
         
-        self.audio_samples = {} #wavデータを保持する辞書
-        self._load_all_character_samples() #全音源を読み込むメソッドを呼び出す
+        Self.audio_samples = {} #wavデータを保持する辞書
+        Self._load_all_character_samples() #全音源を読み込むメソッドを呼び出す
 
-        self.stream = self.pyaudio_instance.open(format=pyaudio.paFloat32,
+        Self.stream = Self.pyaudio_instance.open(format=pyaudio.paFloat32,
                                   channels=1,
                                   rate=self.sample_rate,
                                   output=True,
@@ -258,21 +259,21 @@ class VO_SE_Engine:
 
 
       def _generate_synth_note(self, note: NoteEvent, pitch_events: list[PitchEvent], duration_samples: int) -> np.ndarray:
-        """
-        サイン波/矩形波による単音生成ヘルパー関数（フォールバック用）
-        """
+          """
+          サイン波/矩形波による単音生成ヘルパー関数（フォールバック用）
+         """
         
-        waveform = np.zeros(duration_samples, dtype=np.float32)
-        base_hz = self.value_to_hz(note.note_number)
-        sorted_pitch_events = sorted(pitch_events, key=lambda p: p.time)
+          waveform = np.zeros(duration_samples, dtype=np.float32)
+          base_hz = self.value_to_hz(note.note_number)
+          sorted_pitch_events = sorted(pitch_events, key=lambda p: p.time)
         
-        char_info = self.characters[self.active_character_id]
-        # waveform_type はこのメソッド内では 'sine', 'square', 'sawtooth' のいずれかを想定
-        waveform_type = char_info.waveform_type 
+          char_info = self.characters[self.active_character_id]
+          # waveform_type はこのメソッド内では 'sine', 'square', 'sawtooth' のいずれかを想定
+          waveform_type = char_info.waveform_type 
 
-        phase = 0.0
+          phase = 0.0
 
-        for i in range(duration_samples):
+          for i in range(duration_samples):
             current_time = note.start_time + (i / self.sample_rate)
             
             current_pitch_value = 0 
@@ -298,19 +299,31 @@ class VO_SE_Engine:
                 # デフォルトまたは未知の波形タイプの場合はサイン波を使用
                 waveform[i] = np.sin(phase)
 
+             # エンベロープ適用（簡易的なフェードイン・アウト）
+            fade_len = int(min(0.01, note.duration / 2.0) * self.sample_rate)
+            envelope = np.ones(duration_samples)
+            if fade_len > 0:
+                 envelope[:fade_len] = np.linspace(0, 1, fade_len)
+                 envelope[-fade_len:] = np.linspace(1, 0, fade_len)
+        
+        return (waveform * envelope * 0.5 * (note.velocity / 127.0)).astype(np.float32)
+# ...existing code...
         # エンベロープ適用（簡易的なフェードイン・アウト）
         fade_len = int(min(0.01, note.duration / 2.0) * self.sample_rate)
         envelope = np.ones(duration_samples)
         if fade_len > 0:
             envelope[:fade_len] = np.linspace(0, 1, fade_len)
             envelope[-fade_len:] = np.linspace(1, 0, fade_len)
-        
+
         return (waveform * envelope * 0.5 * (note.velocity / 127.0)).astype(np.float32)
+# ...existing code...
+# ...existing code...
+        # エンベロープ適用（簡易的なフェードイン・アウト）
+        fade_len = int(min(0.01, note.duration / 2.0) * self.sample_rate)
+        envelope = np.ones(duration_samples)
+        if fade_len > 0:
+            envelope[:fade_len] = np.linspace(0, 1, fade_len)
+            envelope[-fade_len:] = np.linspace(1, 0, fade_len)
 
-
-
-
-
-
-
-
+        return (waveform * envelope * 0.5 * (note.velocity / 127.0)).astype(np.float32)
+# ...existing code...

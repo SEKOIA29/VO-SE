@@ -112,7 +112,7 @@ class MainWindow(QMainWindow):
         self.character_selector.currentIndexChanged.connect(self.on_character_changed)
         button_layout.addWidget(self.character_selector) 
 
-      　 #  MIDIポート選択UIの追加
+       #  MIDIポート選択UIの追加
         self.midi_port_selector = QComboBox(self)
         self.midi_port_selector.currentIndexChanged.connect(self.on_midi_port_changed)
         button_layout.addWidget(self.midi_port_selector)
@@ -478,7 +478,7 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 self.status_label.setText(f"MIDIファイル保存エラー: {e}")
 
-        @Slot()
+    @Slot()
     def open_file_dialog_and_load_midi(self):
         """ファイルダイアログを開き、MIDIファイルまたはJSONプロジェクトファイルを読み込む。"""
         filepath, _ = QFileDialog.getOpenFileName(
@@ -527,9 +527,9 @@ class MainWindow(QMainWindow):
                     if data_dicts:
                         notes_list = [NoteEvent.from_dict(d) for d in data_dicts]
                       
-                      　for note in notes_list:
-                        if note.lyrics and not note.phonemes: # 歌詞はあるが音素がない場合
-                            note.phonemes = self._get_yomi_from_lyrics(note.lyrics)
+                        for note in notes_list:
+                            if note.lyrics and not note.phonemes: # 歌詞はあるが音素がない場合
+                                note.phonemes = self._get_yomi_from_lyrics(note.lyrics)
                           
                         self.status_label.setText(f"MIDIファイルの読み込み完了。イベント数: {len(notes_list)}")
                 except Exception as e:
