@@ -1,9 +1,28 @@
 import json
+from PySide6.QtWidgets import QWidget, QFrame, QVBoxLayout, QLabel
+from PySide6.QtCore import Qt, QRect, QPoint, QEvent, Slot, Signal, QSize
+from PySide6.QtGui import QWheelEvent
+
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLineEdit
-from PySide6.QtCore import Qt, QRect, QPoint, QEvent, Slot, Signal, QSize, QWheelEvent
-from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QMouseEvent, QPaintEvent, QKeyEvent, QClipboard, QWheelEvent
+import typing
+from PySide6.QtWidgets import QWidget, QFrame, QVBoxLayout, QLabel
+from PySide6.QtCore import Qt, Signal
+import numpy as np
 from data_models import NoteEvent
 from janome.tokenizer import Tokenizer
+from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtGui import QMouseEvent, QPaintEvent
+from PySide6.QtGui import QMouseEvent, QPaintEvent, QPainter
+from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QWheelEvent
+from PySide6.QtGui import QClipboard
+from PySide6.QtGui import QPen, QBrush, QColor
+from PySide6.QtGui import QMouseEvent, QPaintEvent, QPainter
+from PySide6.QtCore import QRect, Qt, Signal, Slot
+
+
+
 
 class TimelineWidget(QWidget):
     zoom_changed_signal = Signal()

@@ -1,304 +1,275 @@
 # vo_se_engine.py
 
-from typing import Self
-import numpy as np
-import pyaudio
 import json
 import os
-import soundfile as sf 
-from data_models import CharacterInfo, NoteEvent, PitchEvent # data_modelsから必要なクラスをインポート
+import numpy as np
+import pyaudio
+import soundfile as sf
+from data_models import CharacterInfo, NoteEvent, PitchEvent
 from PySide6.QtCore import Slot
 
+
 class VO_SE_Engine:
-    def __init__(self, sample_rate=44100):
-        Self.sample_rate = sample_rate
-        # self._load_character_data() を呼び出してキャラクターデータをロードする
-        Self.characters = Self._load_character_data() 
-        Self.active_character_id = None
-        Self.pyaudio_instance = pyaudio.PyAudio()
-        Self.tempo = 120.0 
-        Self.current_time_playback = 0.0 
-        Self.notes_to_play = []        
-        Self.pitch_data_to_play = []  
-        Self.note_phases = {} 
-        
-        Self.audio_samples = {} #wavデータを保持する辞書
-        Self._load_all_character_samples() #全音源を読み込むメソッドを呼び出す
+    def __init__(self, sample_rate: int = 44100):
+        self.sample_rate = sample_rate
+        # キャラクターデータとサンプルをロード
+        self.characters = self._load_character_data()
+        self.active_character_id = None
+        self.pyaudio_instance = pyaudio.PyAudio()
+        self.tempo = 120.0
+        self.current_time_playback = 0.0
+        self.notes_to_play = []
+        self.pitch_data_to_play = []
+        self.note_phases = {}
+        self.audio_samples = {}
 
-        Self.stream = Self.pyaudio_instance.open (format=pyaudio.paFloat32,)
-        channels=1,
-                                # vo_se_engine.py
+        # オーディオサンプルを読み込む
+        self._load_all_character_samples()
 
-    import json
-    import os
-    import numpy as np
-    import pyaudio
-    import soundfile as sf
-    from data_models import CharacterInfo, NoteEvent, PitchEvent
-    from PySide6.QtCore import Slot
+        # 再生用ストリーム（必要に応じて開始）
+        self.stream = self.pyaudio_instance.open(
+            format=pyaudio.paFloat32,
+            channels=1,
+            rate=self.sample_rate,
+            output=True,
+            frames_per_buffer=1024,
+            stream_callback=self._pyaudio_callback,
+        )
+        self.stream.stop_stream()
 
+    def _load_character_data(self):
+        # engine_params に 'audio_dir' パスを追加
+        return {
+            "char_001": CharacterInfo(
+                "char_001", "アオイ", "元気な女性ボーカル",
+                engine_params={"audio_dir": "./audio/aoi/"},
+                waveform_type="sample_based",
+            ),
+            "char_002": CharacterInfo(
+                "char_002", "ミライ", "落ち着いた男性ボーカル",
+                engine_params={"audio_dir": "./audio/mirai/"},
+                waveform_type="sample_based",
+            ),
+        }
 
-    class VO_SE_Engine:
-                                    def __init__(self, sample_rate: int = 44100):
-                                        self.sample_rate = sample_rate
-                                        # キャラクターデータとサンプルをロード
-                                        self.characters = self._load_character_data()
-                                        self.active_character_id = None
-                                        self.pyaudio_instance = pyaudio.PyAudio()
-                                        self.tempo = 120.0
-                                        self.current_time_playback = 0.0
-                                        self.notes_to_play = []
-                                        self.pitch_data_to_play = []
-                                        self.note_phases = {}
-                                        self.audio_samples = {}
+    @Slot(float)
+    def set_tempo(self, bpm: float):
+        """メインウィンドウからテンポ更新を受け取る"""
+        self.tempo = bpm
 
-                                        # オーディオサンプルを読み込む
-                                        self._load_all_character_samples()
+    def set_active_character(self, char_id: str):
+        if char_id in self.characters:
+            self.active_character_id = char_id
+            print(f"アクティブキャラクターを {self.characters[char_id].name} に設定しました。")
+        else:
+            print(f"エラー: キャラクターID {char_id} が見つかりません。")
 
-                                        # 再生用ストリーム（必要に応じて開始）
-                                        self.stream = self.pyaudio_instance.open(
-                                            format=pyaudio.paFloat32,
-                                            channels=1,
-                                            rate=self.sample_rate,
-                                            output=True,
-                                            frames_per_buffer=1024,
-                                            stream_callback=self._pyaudio_callback,
-                                        )
-                                        self.stream.stop_stream()
+    def value_to_hz(self, note_number: int) -> float:
+        return 440.0 * (2.0 ** ((note_number - 69) / 12.0))
 
-                                    def _load_character_data(self):
-                                        # engine_params に 'audio_dir' パスを追加
-                                        return {
-                                            "char_001": CharacterInfo(
-                                                "char_001", "アオイ", "元気な女性ボーカル",
-                                                engine_params={"audio_dir": "./audio/aoi/"},
-                                                waveform_type="sample_based",
-                                            ),
-                                            "char_002": CharacterInfo(
-                                                "char_002", "ミライ", "落ち着いた男性ボーカル",
-                                                engine_params={"audio_dir": "./audio/mirai/"},
-                                                waveform_type="sample_based",
-                                            ),
-                                        }
+    def apply_pitch_bend(self, base_hz: float, pitch_value: int) -> float:
+        pitch_bend_cents = (pitch_value / 8192.0) * 200.0
+        return base_hz * (2.0 ** (pitch_bend_cents / 1200.0))
 
-                                    @Slot(float)
-                                    def set_tempo(self, bpm: float):
-                                        """メインウィンドウからテンポ更新を受け取る"""
-                                        self.tempo = bpm
+    def synthesize_track(self, notes: list[NoteEvent], pitch_events: list[PitchEvent], start_time: float, end_time: float) -> np.ndarray:
+        if not self.active_character_id:
+            raise ValueError("アクティブキャラクターが設定されていません。")
 
-                                    def set_active_character(self, char_id: str):
-                                        if char_id in self.characters:
-                                            self.active_character_id = char_id
-                                            print(f"アクティブキャラクターを {self.characters[char_id].name} に設定しました。")
-                                        else:
-                                            print(f"エラー: キャラクターID {char_id} が見つかりません。")
+        char_info = self.characters[self.active_character_id]
+        print(f"'{char_info.name}' の設定で合成中...")
 
-                                    def value_to_hz(self, note_number: int) -> float:
-                                        return 440.0 * (2.0 ** ((note_number - 69) / 12.0))
+        duration = end_time - start_time
+        num_samples = int(duration * self.sample_rate)
+        audio_data = np.zeros(num_samples, dtype=np.float32)
 
-                                    def apply_pitch_bend(self, base_hz: float, pitch_value: int) -> float:
-                                        pitch_bend_cents = (pitch_value / 8192.0) * 200.0
-                                        return base_hz * (2.0 ** (pitch_bend_cents / 1200.0))
+        for note in notes:
+            if note.start_time >= end_time or note.start_time + note.duration <= start_time:
+                continue
 
-                                    def synthesize_track(self, notes: list[NoteEvent], pitch_events: list[PitchEvent], start_time: float, end_time: float) -> np.ndarray:
-                                        if not self.active_character_id:
-                                            raise ValueError("アクティブキャラクターが設定されていません。")
+            note_start_sample = int((note.start_time - start_time) * self.sample_rate)
+            note_duration_samples = int(note.duration * self.sample_rate)
 
-                                        char_info = self.characters[self.active_character_id]
-                                        print(f"'{char_info.name}' の設定で合成中...")
+            note_buffer = self._generate_note_with_pitch_bend(note, pitch_events, duration_samples=note_duration_samples)
 
-                                        duration = end_time - start_time
-                                        num_samples = int(duration * self.sample_rate)
-                                        audio_data = np.zeros(num_samples, dtype=np.float32)
+            end_index = min(note_start_sample + note_duration_samples, num_samples)
+            if note_start_sample < end_index:
+                src_end_index = min(note_buffer.shape[0], end_index - note_start_sample)
+                audio_data[note_start_sample:end_index] += note_buffer[:src_end_index]
 
-                                        for note in notes:
-                                            if note.start_time >= end_time or note.start_time + note.duration <= start_time:
-                                                continue
+        return audio_data
 
-                                            note_start_sample = int((note.start_time - start_time) * self.sample_rate)
-                                            note_duration_samples = int(note.duration * self.sample_rate)
+    def _generate_note_with_pitch_bend(self,
+                                      note: NoteEvent,
+                                      pitch_events: list[PitchEvent],
+                                      duration_samples: int,
+                                      start_time_sec: float | None = None,
+                                      end_time_sec: float | None = None,
+                                      ) -> np.ndarray:
+        """サンプルベース音源を結合して長さ duration_samples のバッファを返す"""
+        # フォールバック
+        if self.characters[self.active_character_id].waveform_type != "sample_based":
+            return self._generate_synth_note(note, pitch_events, duration_samples)
 
-                                            note_buffer = self._generate_note_with_pitch_bend(note, pitch_events, duration_samples=note_duration_samples)
+        audio_data = np.zeros(duration_samples, dtype=np.float32)
+        char_id = self.active_character_id
 
-                                            end_index = min(note_start_sample + note_duration_samples, num_samples)
-                                            if note_start_sample < end_index:
-                                                src_end_index = min(note_buffer.shape[0], end_index - note_start_sample)
-                                                audio_data[note_start_sample:end_index] += note_buffer[:src_end_index]
+        if not note.phonemes:
+            return audio_data
 
-                                        return audio_data
+        samples_per_phoneme = duration_samples / len(note.phonemes)
+        current_sample_pos = 0
 
-                                    def _generate_note_with_pitch_bend(self,
-                                                                      note: NoteEvent,
-                                                                      pitch_events: list[PitchEvent],
-                                                                      duration_samples: int,
-                                                                      start_time_sec: float | None = None,
-                                                                      end_time_sec: float | None = None,
-                                                                      ) -> np.ndarray:
-                                        """サンプルベース音源を結合して長さ duration_samples のバッファを返す"""
-                                        # フォールバック
-                                        if self.characters[self.active_character_id].waveform_type != "sample_based":
-                                            return self._generate_synth_note(note, pitch_events, duration_samples)
+        for i, phoneme in enumerate(note.phonemes):
+            if phoneme not in self.audio_samples.get(char_id, {}):
+                print(f"警告: 音素 '{phoneme}' の音源が見つかりません。")
+                current_sample_pos += samples_per_phoneme
+                continue
 
-                                        audio_data = np.zeros(duration_samples, dtype=np.float32)
-                                        char_id = self.active_character_id
+            sample_data = self.audio_samples[char_id][phoneme]
+            target_length = int(samples_per_phoneme)
 
-                                        if not note.phonemes:
-                                            return audio_data
+            # リサンプリング（線形補間）
+            processed_sample = np.interp(
+                np.linspace(0, len(sample_data), target_length, endpoint=False),
+                np.arange(len(sample_data)),
+                sample_data,
+            )
 
-                                        samples_per_phoneme = duration_samples / len(note.phonemes)
-                                        current_sample_pos = 0
+            if i > 0:
+                fade_len = min(int(self.sample_rate * 0.005), len(processed_sample), len(audio_data) - int(current_sample_pos))
+                if fade_len > 0:
+                    fade_out = np.linspace(1.0, 0.0, fade_len)
+                    fade_in = np.linspace(0.0, 1.0, fade_len)
+                    overlap_pos = int(current_sample_pos - fade_len)
+                    audio_data[overlap_pos:int(current_sample_pos)] = (
+                        audio_data[overlap_pos:int(current_sample_pos)] * fade_out + processed_sample[:fade_len] * fade_in
+                    )
+                    processed_sample = processed_sample[fade_len:]
+                    current_sample_pos += fade_len
 
-                                        for i, phoneme in enumerate(note.phonemes):
-                                            if phoneme not in self.audio_samples.get(char_id, {}):
-                                                print(f"警告: 音素 '{phoneme}' の音源が見つかりません。")
-                                                current_sample_pos += samples_per_phoneme
-                                                continue
+            end_pos = int(current_sample_pos + len(processed_sample))
+            if end_pos > duration_samples:
+                end_pos = duration_samples
+                processed_sample = processed_sample[:end_pos - int(current_sample_pos)]
 
-                                            sample_data = self.audio_samples[char_id][phoneme]
-                                            target_length = int(samples_per_phoneme)
+            if len(processed_sample) > 0:
+                audio_data[int(current_sample_pos):end_pos] += processed_sample * (note.velocity / 127.0)
 
-                                            # リサンプリング（線形補間）
-                                            processed_sample = np.interp(
-                                                np.linspace(0, len(sample_data), target_length, endpoint=False),
-                                                np.arange(len(sample_data)),
-                                                sample_data,
-                                            )
+            current_sample_pos += len(processed_sample)
 
-                                            if i > 0:
-                                                fade_len = min(int(self.sample_rate * 0.005), len(processed_sample), len(audio_data) - int(current_sample_pos))
-                                                if fade_len > 0:
-                                                    fade_out = np.linspace(1.0, 0.0, fade_len)
-                                                    fade_in = np.linspace(0.0, 1.0, fade_len)
-                                                    overlap_pos = int(current_sample_pos - fade_len)
-                                                    audio_data[overlap_pos:int(current_sample_pos)] = (
-                                                        audio_data[overlap_pos:int(current_sample_pos)] * fade_out + processed_sample[:fade_len] * fade_in
-                                                    )
-                                                    processed_sample = processed_sample[fade_len:]
-                                                    current_sample_pos += fade_len
+        return audio_data.astype(np.float32)
 
-                                            end_pos = int(current_sample_pos + len(processed_sample))
-                                            if end_pos > duration_samples:
-                                                end_pos = duration_samples
-                                                processed_sample = processed_sample[:end_pos - int(current_sample_pos)]
+    def close(self):
+        if self.stream and self.stream.is_active():
+            self.stream.stop_stream()
+            self.stream.close()
+        if self.pyaudio_instance:
+            self.pyaudio_instance.terminate()
 
-                                            if len(processed_sample) > 0:
-                                                audio_data[int(current_sample_pos):end_pos] += processed_sample * (note.velocity / 127.0)
+    def start_playback_stream(self, notes, pitch_data, start_time):
+        self.note_phases = {}
+        self.notes_to_play = notes
+        self.pitch_data_to_play = pitch_data
+        self.current_time_playback = start_time
+        if not self.stream.is_active():
+            self.stream.start_stream()
 
-                                            current_sample_pos += len(processed_sample)
+    def stop_playback_stream(self):
+        if self.stream.is_active():
+            self.stream.stop_stream()
+            self.note_phases = {}
 
-                                        return audio_data.astype(np.float32)
+    def _pyaudio_callback(self, in_data, frame_count, time_info, status):
+        audio_data = np.zeros(frame_count, dtype=np.float32)
 
-                                    def close(self):
-                                        if self.stream and self.stream.is_active():
-                                            self.stream.stop_stream()
-                                            self.stream.close()
-                                        if self.pyaudio_instance:
-                                            self.pyaudio_instance.terminate()
+        start_time_chunk = self.current_time_playback
+        end_time_chunk = start_time_chunk + (frame_count / self.sample_rate)
 
-                                    def start_playback_stream(self, notes, pitch_data, start_time):
-                                        self.note_phases = {}
-                                        self.notes_to_play = notes
-                                        self.pitch_data_to_play = pitch_data
-                                        self.current_time_playback = start_time
-                                        if not self.stream.is_active():
-                                            self.stream.start_stream()
+        for note in self.notes_to_play:
+            if note.start_time + note.duration > start_time_chunk and note.start_time < end_time_chunk:
+                gen_start_sec = max(start_time_chunk, note.start_time)
+                gen_end_sec = min(end_time_chunk, note.start_time + note.duration)
 
-                                    def stop_playback_stream(self):
-                                        if self.stream.is_active():
-                                            self.stream.stop_stream()
-                                            self.note_phases = {}
+                if gen_start_sec >= gen_end_sec:
+                    continue
 
-                                    def _pyaudio_callback(self, in_data, frame_count, time_info, status):
-                                        audio_data = np.zeros(frame_count, dtype=np.float32)
+                seg_duration = gen_end_sec - gen_start_sec
+                seg_samples = int(seg_duration * self.sample_rate)
 
-                                        start_time_chunk = self.current_time_playback
-                                        end_time_chunk = start_time_chunk + (frame_count / self.sample_rate)
+                note_buffer = self._generate_note_with_pitch_bend(
+                    note,
+                    self.pitch_data_to_play,
+                    duration_samples=seg_samples,
+                    start_time_sec=gen_start_sec,
+                    end_time_sec=gen_end_sec,
+                )
 
-                                        for note in self.notes_to_play:
-                                            if note.start_time + note.duration > start_time_chunk and note.start_time < end_time_chunk:
-                                                gen_start_sec = max(start_time_chunk, note.start_time)
-                                                gen_end_sec = min(end_time_chunk, note.start_time + note.duration)
+                copy_start_in_chunk = int((gen_start_sec - start_time_chunk) * self.sample_rate)
+                copy_end_in_chunk = copy_start_in_chunk + note_buffer.shape[0]
 
-                                                if gen_start_sec >= gen_end_sec:
-                                                    continue
+                if copy_start_in_chunk < frame_count and copy_end_in_chunk > 0:
+                    valid_copy_end = min(frame_count, copy_end_in_chunk)
+                    valid_src_end = valid_copy_end - copy_start_in_chunk
+                    audio_data[copy_start_in_chunk:valid_copy_end] += note_buffer[:valid_src_end]
 
-                                                seg_duration = gen_end_sec - gen_start_sec
-                                                seg_samples = int(seg_duration * self.sample_rate)
+        self.current_time_playback = end_time_chunk
+        return audio_data.tobytes(), pyaudio.paContinue
 
-                                                note_buffer = self._generate_note_with_pitch_bend(
-                                                    note,
-                                                    self.pitch_data_to_play,
-                                                    duration_samples=seg_samples,
-                                                    start_time_sec=gen_start_sec,
-                                                    end_time_sec=gen_end_sec,
-                                                )
+    def _load_all_character_samples(self):
+        for char_id, char_info in self.characters.items():
+            audio_dir = char_info.engine_params.get("audio_dir")
+            if audio_dir and os.path.isdir(audio_dir):
+                self.audio_samples[char_id] = {}
+                for filename in os.listdir(audio_dir):
+                    if filename.endswith(".wav"):
+                        phoneme_name = filename[:-4]
+                        filepath = os.path.join(audio_dir, filename)
+                        try:
+                            data, sr = sf.read(filepath)
+                            if data.ndim > 1:
+                                data = data.mean(axis=1)
+                            if sr != self.sample_rate:
+                                print(f"警告: {filename} のSRが一致しません ({sr}Hz != {self.sample_rate}Hz)")
+                            self.audio_samples[char_id][phoneme_name] = data
+                        except Exception as e:
+                            print(f"音源読み込みエラー {filepath}: {e}")
+            print(f"'{char_info.name}' の音源を {len(self.audio_samples.get(char_id, {}))} 件読み込みました。")
 
-                                                copy_start_in_chunk = int((gen_start_sec - start_time_chunk) * self.sample_rate)
-                                                copy_end_in_chunk = copy_start_in_chunk + note_buffer.shape[0]
+    def _generate_synth_note(self, note: NoteEvent, pitch_events: list[PitchEvent], duration_samples: int) -> np.ndarray:
+        waveform = np.zeros(duration_samples, dtype=np.float32)
+        base_hz = self.value_to_hz(note.note_number)
+        sorted_pitch_events = sorted(pitch_events, key=lambda p: p.time)
 
-                                                if copy_start_in_chunk < frame_count and copy_end_in_chunk > 0:
-                                                    valid_copy_end = min(frame_count, copy_end_in_chunk)
-                                                    valid_src_end = valid_copy_end - copy_start_in_chunk
-                                                    audio_data[copy_start_in_chunk:valid_copy_end] += note_buffer[:valid_src_end]
+        char_info = self.characters[self.active_character_id]
+        waveform_type = char_info.waveform_type
 
-                                        self.current_time_playback = end_time_chunk
-                                        return audio_data.tobytes(), pyaudio.paContinue
+        phase = 0.0
+        for i in range(duration_samples):
+            current_time = note.start_time + (i / self.sample_rate)
+            current_pitch_value = 0
+            for p_event in sorted_pitch_events:
+                if p_event.time <= current_time:
+                    current_pitch_value = p_event.value
+                else:
+                    break
 
-                                    def _load_all_character_samples(self):
-                                        for char_id, char_info in self.characters.items():
-                                            audio_dir = char_info.engine_params.get("audio_dir")
-                                            if audio_dir and os.path.isdir(audio_dir):
-                                                self.audio_samples[char_id] = {}
-                                                for filename in os.listdir(audio_dir):
-                                                    if filename.endswith(".wav"):
-                                                        phoneme_name = filename[:-4]
-                                                        filepath = os.path.join(audio_dir, filename)
-                                                        try:
-                                                            data, sr = sf.read(filepath)
-                                                            if data.ndim > 1:
-                                                                data = data.mean(axis=1)
-                                                            if sr != self.sample_rate:
-                                                                print(f"警告: {filename} のSRが一致しません ({sr}Hz != {self.sample_rate}Hz)")
-                                                            self.audio_samples[char_id][phoneme_name] = data
-                                                        except Exception as e:
-                                                            print(f"音源読み込みエラー {filepath}: {e}")
-                                            print(f"'{char_info.name}' の音源を {len(self.audio_samples.get(char_id, {}))} 件読み込みました。")
+            current_hz = self.apply_pitch_bend(base_hz, current_pitch_value)
+            phase += (2 * np.pi * current_hz / self.sample_rate)
 
-                                    def _generate_synth_note(self, note: NoteEvent, pitch_events: list[PitchEvent], duration_samples: int) -> np.ndarray:
-                                        waveform = np.zeros(duration_samples, dtype=np.float32)
-                                        base_hz = self.value_to_hz(note.note_number)
-                                        sorted_pitch_events = sorted(pitch_events, key=lambda p: p.time)
+            if waveform_type == "sine":
+                waveform[i] = np.sin(phase)
+            elif waveform_type == "square":
+                waveform[i] = np.sign(np.sin(phase))
+            elif waveform_type == "sawtooth":
+                normalized_phase = np.mod(phase / (2 * np.pi), 1.0)
+                waveform[i] = 2 * (normalized_phase - 0.5)
+            else:
+                waveform[i] = np.sin(phase)
 
-                                        char_info = self.characters[self.active_character_id]
-                                        waveform_type = char_info.waveform_type
+        fade_len = int(min(0.01, note.duration / 2.0) * self.sample_rate)
+        envelope = np.ones(duration_samples, dtype=np.float32)
+        if fade_len > 0:
+            envelope[:fade_len] = np.linspace(0, 1, fade_len)
+            envelope[-fade_len:] = np.linspace(1, 0, fade_len)
 
-                                        phase = 0.0
-                                        for i in range(duration_samples):
-                                            current_time = note.start_time + (i / self.sample_rate)
-                                            current_pitch_value = 0
-                                            for p_event in sorted_pitch_events:
-                                                if p_event.time <= current_time:
-                                                    current_pitch_value = p_event.value
-                                                else:
-                                                    break
-
-                                            current_hz = self.apply_pitch_bend(base_hz, current_pitch_value)
-                                            phase += (2 * np.pi * current_hz / self.sample_rate)
-
-                                            if waveform_type == "sine":
-                                                waveform[i] = np.sin(phase)
-                                            elif waveform_type == "square":
-                                                waveform[i] = np.sign(np.sin(phase))
-                                            elif waveform_type == "sawtooth":
-                                                normalized_phase = np.mod(phase / (2 * np.pi), 1.0)
-                                                waveform[i] = 2 * (normalized_phase - 0.5)
-                                            else:
-                                                waveform[i] = np.sin(phase)
-
-                                        fade_len = int(min(0.01, note.duration / 2.0) * self.sample_rate)
-                                        envelope = np.ones(duration_samples, dtype=np.float32)
-                                        if fade_len > 0:
-                                            envelope[:fade_len] = np.linspace(0, 1, fade_len)
-                                            envelope[-fade_len:] = np.linspace(1, 0, fade_len)
-
-                                        return (waveform * envelope * 0.5 * (note.velocity / 127.0)).astype(np.float32)
+        return (waveform * envelope * 0.5 * (note.velocity / 127.0)).astype(np.float32)
