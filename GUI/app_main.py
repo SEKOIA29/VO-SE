@@ -2,7 +2,9 @@
 
 import sys
 # main_window.py ファイルから MainWindow クラスをインポートする
-from main_window import MainWindow 
+from GUI.main_window import MainWindow 
+
+
 
 # PySide6 の QApplication クラスをインポートする
 from PySide6.QtWidgets import QApplication

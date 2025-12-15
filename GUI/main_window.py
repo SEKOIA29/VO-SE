@@ -11,14 +11,15 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QMenu, QVBoxL
 from PySide6.QtGui import QAction, QKeySequence, QKeyEvent
 from PySide6.QtCore import Slot, Qt, QTimer, Signal
 
-from vo_se_engine import VO_SE_Engine
+from GUI.vo_se_engine import VO_SE_Engine
+
 import numpy as np 
 
-from timeline_widget import TimelineWidget
-from keyboard_sidebar_widget import KeyboardSidebarWidget
-from midi_manager import load_midi_file, MidiInputManager, midi_signals
-from data_models import NoteEvent, PitchEvent
-from graph_editor_widget import GraphEditorWidget
+from .timeline_widget import TimelineWidget
+from .keyboard_sidebar_widget import KeyboardSidebarWidget
+from .midi_manager import load_midi_file, MidiInputManager, midi_signals
+from .data_models import NoteEvent, PitchEvent
+from .graph_editor_widget import GraphEditorWidget
 
 
 class MainWindow(QMainWindow):
