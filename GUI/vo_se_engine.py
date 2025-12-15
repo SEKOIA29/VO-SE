@@ -31,7 +31,7 @@ class VO_SE_Engine:
                                   output=True,
                                   frames_per_buffer=1024,
                                   stream_callback=self._pyaudio_callback) 
-        self.stream.stop_stream()
+        Self.stream.stop_stream()
 
 
 
