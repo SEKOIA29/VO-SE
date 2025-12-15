@@ -7,6 +7,7 @@ import json
 import os
 import soundfile as sf 
 from data_models import CharacterInfo, NoteEvent, PitchEvent # data_modelsから必要なクラスをインポート
+from PySide6.QtCore import Slot
 
 class VO_SE_Engine:
     def __init__(self, sample_rate=44100):
@@ -36,14 +37,23 @@ class VO_SE_Engine:
 
         def _load_character_data(self):
         # engine_params に 'audio_dir' パスを追加
-        return {
-            "char_001": CharacterInfo("char_001", "アオイ", "元気な女性ボーカル", 
-                                      engine_params={"audio_dir": "./audio/aoi/"}, # ★修正
-                                      waveform_type="sample_based"), # ★修正: wave_typeも変更
-            "char_002": CharacterInfo("char_002", "ミライ", "落ち着いた男性ボーカル", 
-                                      engine_params={"audio_dir": "./audio/mirai/"}, # ★修正
-                                      waveform_type="sample_based"), # ★修正: wave_typeも変更
+         self.characters = {
+            "char_001": CharacterInfo("char_001", "アオイ", "元気な女性ボーカル",
+                                      engine_params={"audio_dir": "./audio/aoi/"},
+                                      waveform_type="sample_based"),
+            "char_002": CharacterInfo("char_002", "ミライ", "落ち着いた男性ボーカル",
+                                      engine_params={"audio_dir": "./audio/mirai/"},
+                                      waveform_type="sample_based"),
         }
+        self.active_character_id = None
+        self.pyaudio_instance = pyaudio.PyAudio()
+        self.tempo = 120.0
+        self.current_time_playback = 0.0
+        self.notes_to_play = []
+        self.pitch_data_to_play = []
+        self.note_phases = {}
+        self.audio_samples = {}
+
 
 
     @Slot(float)
@@ -99,14 +109,14 @@ class VO_SE_Engine:
         return audio_data
             
 
-           def _generate_note_with_pitch_bend(self, 
+        def _generate_note_with_pitch_bend(self, 
                                        note: NoteEvent, 
                                        pitch_events: list[PitchEvent], 
                                        duration_samples: int # 生成すべき最終的なサンプル数
                                       ) -> np.ndarray:
         
         # 'sample_based' 以外の場合は、サイン波生成のフォールバックメソッドを呼び出す
-        if self.characters[self.active_character_id].waveform_type != "sample_based":
+         if self.characters[self.active_character_id].waveform_type != "sample_based":
             return self._generate_synth_note(note, pitch_events, duration_samples)
 
         audio_data = np.zeros(duration_samples, dtype=np.float32)
@@ -173,7 +183,7 @@ class VO_SE_Engine:
         if self.pyaudio_instance:
             self.pyaudio_instance.terminate()
 
-     def start_playback_stream(self, notes, pitch_data, start_time):
+    def start_playback_stream(self, notes, pitch_data, start_time):
         self.note_phases = {} 
 
         self.notes_to_play = notes
@@ -258,7 +268,7 @@ class VO_SE_Engine:
 
 
 
-      def _generate_synth_note(self, note: NoteEvent, pitch_events: list[PitchEvent], duration_samples: int) -> np.ndarray:
+    def _generate_synth_note(self, note: NoteEvent, pitch_events: list[PitchEvent], duration_samples: int) -> np.ndarray:
           """
           サイン波/矩形波による単音生成ヘルパー関数（フォールバック用）
          """
@@ -306,24 +316,24 @@ class VO_SE_Engine:
                  envelope[:fade_len] = np.linspace(0, 1, fade_len)
                  envelope[-fade_len:] = np.linspace(1, 0, fade_len)
         
-        return (waveform * envelope * 0.5 * (note.velocity / 127.0)).astype(np.float32)
+    return (waveform * envelope * 0.5 * (note.velocity / 127.0)).astype(np.float32)
 # ...existing code...
         # エンベロープ適用（簡易的なフェードイン・アウト）
-        fade_len = int(min(0.01, note.duration / 2.0) * self.sample_rate)
-        envelope = np.ones(duration_samples)
-        if fade_len > 0:
+    fade_len = int(min(0.01, note.duration / 2.0) * self.sample_rate)
+    envelope = np.ones(duration_samples)
+    if fade_len > 0:
             envelope[:fade_len] = np.linspace(0, 1, fade_len)
             envelope[-fade_len:] = np.linspace(1, 0, fade_len)
 
-        return (waveform * envelope * 0.5 * (note.velocity / 127.0)).astype(np.float32)
+    return (waveform * envelope * 0.5 * (note.velocity / 127.0)).astype(np.float32)
 # ...existing code...
 # ...existing code...
         # エンベロープ適用（簡易的なフェードイン・アウト）
-        fade_len = int(min(0.01, note.duration / 2.0) * self.sample_rate)
-        envelope = np.ones(duration_samples)
-        if fade_len > 0:
+    fade_len = int(min(0.01, note.duration / 2.0) * self.sample_rate)
+    envelope = np.ones(duration_samples)
+    if fade_len > 0:
             envelope[:fade_len] = np.linspace(0, 1, fade_len)
             envelope[-fade_len:] = np.linspace(1, 0, fade_len)
 
-        return (waveform * envelope * 0.5 * (note.velocity / 127.0)).astype(np.float32)
+    return (waveform * envelope * 0.5 * (note.velocity / 127.0)).astype(np.float32)
 # ...existing code...
