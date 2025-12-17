@@ -1,8 +1,11 @@
+#define DR_WAV_IMPLEMENTATION
 #include "api_interface.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include "dr_wav.h"
+#include "api_interface.h"
 
 // 音素データを保持する内部ハッシュマップの代わりの構造体
 typedef struct {
@@ -153,3 +156,36 @@ EXPORT float* request_synthesis_full(SynthesisRequest request, int* out_sample_c
     );
 }
 
+// 音素データを保持する構造体
+typedef struct {
+    char phoneme_name[32];
+    float* samples;
+    drwav_uint64 sample_count;
+} PhonemeSample;
+
+PhonemeSample g_library[100]; // 最大100音素まで
+int g_phoneme_count = 0;
+
+// エンジンの初期化：指定ディレクトリのWAVをすべてロード
+int init_engine(const char* char_id, const char* audio_dir) {
+    // 実際にはディレクトリ内のファイルをループで回しますが、
+    // ここでは代表的な「あ.wav」を読み込む例を示します
+    char filepath[512];
+    sprintf(filepath, "%s/a.wav", audio_dir); // a.wavを読み込む例
+
+    unsigned int channels;
+    unsigned int sampleRate;
+    drwav_uint64 totalPCMFrameCount;
+    
+    float* pSampleData = drwav_open_file_and_read_pcm_frames_f32(
+        filepath, &channels, &sampleRate, &totalPCMFrameCount, NULL);
+
+    if (pSampleData != NULL) {
+        strcpy(g_library[g_phoneme_count].phoneme_name, "a");
+        g_library[g_phoneme_count].samples = pSampleData;
+        g_library[g_phoneme_count].sample_count = totalPCMFrameCount;
+        g_phoneme_count++;
+        return 0;
+    }
+    return -1;
+}
