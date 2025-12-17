@@ -1,4 +1,3 @@
-#VO_SE_engine_C/include/audio_types.h
 #ifndef AUDIO_TYPES_H
 #define AUDIO_TYPES_H
 
