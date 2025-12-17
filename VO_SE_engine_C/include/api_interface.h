@@ -3,6 +3,19 @@
 
 #include "audio_types.h"
 
+// 合成リクエストをまとめる構造体
+typedef struct {
+    CNoteEvent* notes;
+    int note_count;
+    CPitchEvent* pitch_events;
+    int pitch_event_count;
+    int sample_rate;
+} SynthesisRequest;
+
+// Pythonから呼び出す関数
+EXPORT float* request_synthesis_full(SynthesisRequest request, int* out_sample_count);
+
+
 // VO-SE_engine_C エンジンの初期化関数
 void vse_initialize();
 
