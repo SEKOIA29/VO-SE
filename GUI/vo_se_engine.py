@@ -130,7 +130,7 @@ class VO_SE_Engine:
         return c_notes, c_pitches
 
     def synthesize_track(self, notes: list[NoteEvent], pitch_events: list[PitchEvent], start_time: float, end_time: float) -> np.ndarray:
-        """Cエンジンを呼び出して波形を一括生成"""
+        """VO-SE engineを呼び出して波形を一括生成"""
         if not notes:
             return np.zeros(1024, dtype=np.float32)
 
@@ -158,7 +158,7 @@ class VO_SE_Engine:
         return np.zeros(1024, dtype=np.float32)
 
     def _pyaudio_callback(self, in_data, frame_count, time_info, status):
-        """リアルタイム再生用コールバック（ここでもCエンジンを呼べる）"""
+        """リアルタイム再生用コールバック（ここでもVO-SE engineを呼べる）"""
         # ※簡易実装のため、ここでは現在のチャンクの音声を合成して返す
         # 実際には synthesize_track で作った長いバッファを切り出して返すのがスムーズです
         audio_data = np.zeros(frame_count, dtype=np.float32)
