@@ -34,17 +34,52 @@ void vse_shutdown() {
     }
 }
 
-// キャラクター音源のロード（audio_dir内のWAVを読み込む）
+// api_interface.c の init_engine 部分を以下に書き換え
+#include <dirent.h> // ディレクトリ走査用
+
 int init_engine(const char* char_id, const char* audio_dir) {
-    // 既存ライブラリをクリア
-    vse_shutdown();
+    vse_shutdown(); // 既存の音源があれば解放
     vse_initialize();
 
-    // 実装上の注意：本来はdirent.h等でディレクトリをスキャンしますが、
-    // ここではエンジンの核となる「音素登録」のロジックを示します。
-    // Pythonから音素リストを別途渡すか、C側で特定ファイルを読み込む処理をここに追加します。
-    printf("C-Engine: Loading character [%s] from [%s]\n", char_id, audio_dir);
-    return 0; // 成功
+    DIR *dir;
+    struct dirent *ent;
+    if ((dir = opendir(audio_dir)) != NULL) {
+        while ((ent = readdir(dir)) != NULL) {
+            // .wavファイルのみを対象にする
+            if (strstr(ent->d_name, ".wav") != NULL) {
+                char filepath[512];
+                snprintf(filepath, sizeof(filepath), "%s/%s", audio_dir, ent->d_name);
+
+                unsigned int channels;
+                unsigned int sampleRate;
+                drwav_uint64 totalPCMFrameCount;
+                
+                // WAV読み込み
+                float* pSampleData = drwav_open_file_and_read_pcm_frames_f32(
+                    filepath, &channels, &sampleRate, &totalPCMFrameCount, NULL);
+
+                if (pSampleData) {
+                    // 音素名としてファイル名（拡張子なし）を登録
+                    char ph_name[64];
+                    strncpy(ph_name, ent->d_name, strlen(ent->d_name) - 4);
+                    ph_name[strlen(ent->d_name) - 4] = '\0';
+
+                    // ライブラリに登録
+                    strcpy(g_lib[g_lib_count].phoneme_name, ph_name);
+                    g_lib[g_lib_count].samples = pSampleData;
+                    g_lib[g_lib_count].sample_count = totalPCMFrameCount;
+                    g_lib_count++;
+                    
+                    printf("C-Engine: Loaded phoneme [%s] (%llu samples)\n", ph_name, totalPCMFrameCount);
+                }
+            }
+        }
+        closedir(dir);
+    } else {
+        printf("C-Engine Error: Could not open directory %s\n", audio_dir);
+        return -1;
+    }
+    return 0;
 }
 
 // ヘルパー：音素名から波形を検索
