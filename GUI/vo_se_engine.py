@@ -1,13 +1,18 @@
 # vo_se_engine.py
 
-# GUI/vo_se_engine.py
-
+import platform
 import ctypes
 import os
 import numpy as np
 import pyaudio
 from data_models import CharacterInfo, NoteEvent, PitchEvent
 from PySide6.QtCore import Slot
+
+# OSに合わせて拡張子を変更
+ext = ".dylib" if platform.system() == "Darwin" else ".dll"
+lib_path = os.path.abspath(os.path.join(os.path.dirname(__file__), f"../VO_SE_engine_C/lib/engine{ext}"))
+self.lib = ctypes.CDLL(lib_path)
+
 
 # --- C言語の構造体定義 (audio_types.h と完全一致させる) ---
 class CPitchEvent(ctypes.Structure):
