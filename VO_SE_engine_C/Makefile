@@ -1,12 +1,24 @@
+# コンパイラ設定 (macOSはclangが標準)
 CC = gcc
-CFLAGS = -I./include -O3 -shared -fPIC
+# -O3: 最適化, -fPIC: 位置独立コード, -arch: Apple SiliconとIntel両対応
+CFLAGS = -I./include -O3 -dynamiclib -fPIC -arch arm64 -arch x86_64
 LDFLAGS = -lm
-TARGET = lib/engine.dll  # Mac/Linuxなら .so に書き換え
 
+# 出力ファイル名 (macOSは .dylib)
+TARGET = lib/engine.dylib
+
+# ソースファイル
+SRCS = src/api_interface.c src/synthesizer_core.c
+HEADERS = include/api_interface.h include/audio_types.h include/synthesizer_core.h include/dr_wav.h
+
+# ビルド命令
 all: $(TARGET)
 
-$(TARGET): src/api_interface.c
-	$(CC) $(CFLAGS) -o $(TARGET) src/api_interface.c $(LDFLAGS)
+$(TARGET): $(SRCS) $(HEADERS)
+	@mkdir -p lib
+	$(CC) $(CFLAGS) -o $(TARGET) $(SRCS) $(LDFLAGS)
+	@echo "Build Successful: $(TARGET)"
 
+# 掃除命令
 clean:
-	rm -f $(TARGET)
+	rm -rf lib/engine.dylib
