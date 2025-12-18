@@ -194,22 +194,27 @@ float* vse_synthesize_track(
 }
 
 // Pythonとの直接の連絡口
+
 EXPORT float* request_synthesis_full(SynthesisRequest request, int* out_sample_count) {
-    // 全体の長さを計算 (最後の音符の終了時間を探す)
     float max_time = 0.0f;
+
+    // 終了時間を計算
     for (int i = 0; i < request.note_count; i++) {
         float end = request.notes[i].start_time + request.notes[i].duration;
-        if (end > max_time) max_time = end;
+        if (end > max_time) {
+            max_time = end;
+        }
     }
-    max_time += 0.5f; // 余韻
+    max_time += 1.0f; // バッファに余裕を持たせる
 
+    // 直接 return する（これで audio_data という変数名自体を使わないので、再定義エラーは物理的に起こらなくなります）
     return vse_synthesize_track(
-        request.notes, request.note_count,
-        request.pitch_events, request.pitch_event_count,
-        0.0f, max_time,
+        request.notes, 
+        request.note_count,
+        request.pitch_events, 
+        request.pitch_event_count,
+        0.0f, 
+        max_time,
         out_sample_count
     );
-}
-
-    return audio_data;
 }

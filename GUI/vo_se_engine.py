@@ -14,6 +14,8 @@ lib_path = os.path.abspath(os.path.join(os.path.dirname(__file__), f"../VO_SE_en
 self.lib = ctypes.CDLL(lib_path)
 
 
+
+
 # --- C言語の構造体定義 (audio_types.h と完全一致させる) ---
 class CPitchEvent(ctypes.Structure):
     _fields_ = [
