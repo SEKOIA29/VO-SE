@@ -6,6 +6,17 @@
 #include <string.h>
 #include <math.h>
 
+#include <stdlib.h>
+#include <stddef.h>
+#include "api_interface.h" // 構造体定義が含まれるヘッダー
+
+#ifdef _WIN32
+  #define EXPORT __declspec(dllexport)
+#else
+  #define EXPORT __attribute__((visibility("default"))) // macOS/Linuxで確実に公開
+#endif
+
+
 // --- 内部管理用：音源ライブラリ構造体 ---
 typedef struct {
     char phoneme_name[32];
@@ -193,23 +204,34 @@ float* vse_synthesize_track(
     return full_buffer;
 }
 
-// Pythonとの直接の連絡口
+
+// --- 修正された窓口関数 ---
 EXPORT float* request_synthesis_full(SynthesisRequest request, int* out_sample_count) {
-    // 全体の長さを計算 (最後の音符の終了時間を探す)
     float max_time = 0.0f;
     for (int i = 0; i < request.note_count; i++) {
         float end = request.notes[i].start_time + request.notes[i].duration;
-        if (end > max_time) max_time = end;
+        if (end > max_time) {
+            max_time = end;
+        }
     }
-    max_time += 0.5f; // 余韻
+    max_time += 0.5f;
 
-    return vse_synthesize_track(
-        request.notes, request.note_count,
-        request.pitch_events, request.pitch_event_count,
-        0.0f, max_time,
+    // 変数宣言はここ1回だけなので、先ほどのエラーは出ません
+    float* audio_data = vse_synthesize_track(
+        request.notes, 
+        request.note_count, 
+        request.pitch_events, 
+        request.pitch_event_count, 
+        0.0f, 
+        max_time, 
         out_sample_count
     );
-}
 
     return audio_data;
+}
+
+EXPORT void free_audio_buffer(float* ptr) {
+    if (ptr != NULL) {
+        free(ptr);
+    }
 }
