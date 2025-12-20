@@ -1,5 +1,9 @@
 # data_models.py
 
+from dataclasses import dataclass, field
+from typing import List, Dict
+
+
 class PitchEvent:
     """
     ピッチベンドのデータ構造を定義するクラス
@@ -70,4 +74,27 @@ class CharacterInfo:
         self.description = description
         self.engine_params = engine_params if engine_params is not None else {} 
         self.waveform_type = waveform_type # 'sine', 'square', 'sawtooth', 'sample_based'などを想定
+
+@dataclass
+class NoteEvent:
+    note_number: int
+    start_time: float
+    duration: float
+    velocity: int = 100
+    lyric: str = ""
+    phonemes: List[str] = field(default_factory=list)
+
+@dataclass
+class PitchEvent:
+    time: float
+    value: int
+
+@dataclass
+class CharacterInfo:
+    id: str
+    name: str
+    description: str
+    engine_params: Dict
+    waveform_type: str = "sample_based"
+
 
