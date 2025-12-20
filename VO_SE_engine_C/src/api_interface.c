@@ -92,7 +92,6 @@ EXPORT float* request_synthesis_full(SynthesisRequest request, int* out_sample_c
         0.0f, max_time,
         out_sample_count
     );
-}
-
+    
     return audio_data;
 }
