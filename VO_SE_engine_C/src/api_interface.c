@@ -1,18 +1,55 @@
+/* src/api_interface.c の冒頭部分 */
+#include <stdint.h>  // ← これを最初に追加（uint64_t 等を定義するため）
 #include <stdlib.h>
 #include <stdio.h>
+
+#ifndef DR_WAV_IMPLEMENTATION
+#define DR_WAV_IMPLEMENTATION
+#endif
+#include "dr_wav.h"  // その後に include する
 #include <string.h>
 #include <dirent.h>
-#define DR_WAV_IMPLEMENTATION
-#include "dr_wav.h"
+#include <math.h>   
 #include "api_interface.h"
-#include "synthesizer_core.h"
+#define EXPORT __attribute__((visibility("default")))
+// --- ユーティリティ関数 ---
+void resample_linear(const float* input, int input_len, float* output, int output_len) {
+    for (int i = 0; i < output_len; i++) {
+        float t = (float)i * (input_len - 1) / (output_len - 1);
+        int t_int = (int)t;
+        float t_frac = t - t_int;
+        if (t_int + 1 < input_len) {
+            output[i] = input[t_int] * (1.0f - t_frac) + input[t_int + 1] * t_frac;
+        } else {
+            output[i] = input[t_int];
+        }
+    }
+}   
+void apply_crossfade(float* dest, int dest_start, const float* src, int src_len, int fade_len) {
+    for (int i = 0; i < src_len; i++) {
+        if (i < fade_len) {
+            float fade_in = (float)i / fade_len;
+            float fade_out = 1.0f - fade_in;
+            dest[dest_start + i] = dest[dest_start + i] * fade_out + src[i] * fade_in;
+        } else if (i >= src_len - fade_len) {
+            float fade_out = (float)(src_len - i) / fade_len;
+            float fade_in = 1.0f - fade_out;
+            dest[dest_start + i] = dest[dest_start + i] * fade_out + src[i] * fade_in;
+        } else {
+            dest[dest_start + i] += src[i];
+        }
+    }
+}
+
 
 // --- 音源ライブラリ管理 ---
 typedef struct {
-    char name[64];
+    char name[256];   // ← ここを "name" ではなく "name[256]" に修正
     float* samples;
-    drwav_uint64 count;
+    uint64_t count;   // 先ほどの修正通り count に統一
 } Phoneme;
+
+
 
 static Phoneme g_lib[128];
 static int g_lib_cnt = 0;
@@ -78,21 +115,18 @@ float* vse_synthesize_track(CNoteEvent* notes, int note_cnt, CPitchEvent* p_even
 
 // --- Pythonからのメイン窓口 ---
 EXPORT float* request_synthesis_full(SynthesisRequest request, int* out_sample_count) {
-    // 1. 関数の最初で必ず型を宣言する
-    float* audio_data = NULL;
     float max_time = 0.0f;
 
-    // 2. 終了時間の計算
+    // 終了時間を計算
     for (int i = 0; i < request.note_count; i++) {
         float end = request.notes[i].start_time + request.notes[i].duration;
         if (end > max_time) {
             max_time = end;
         }
     }
-    max_time += 1.0f; // 少し余白
+    max_time += 1.0f; // バッファに余裕を持たせる
 
-    // 3. 宣言した audio_data に結果を代入する
-    float* audio_data = vse_synthesize_track(
+    return vse_synthesize_track(
         request.notes, 
         request.note_count,
         request.pitch_events, 
@@ -100,11 +134,7 @@ EXPORT float* request_synthesis_full(SynthesisRequest request, int* out_sample_c
         0.0f, 
         max_time,
         out_sample_count
-    ); 
-
-
-    // 4. 最後に return する
-    return audio_data;
+    );
 }
 
 
