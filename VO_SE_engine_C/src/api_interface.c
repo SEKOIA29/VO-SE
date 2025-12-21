@@ -76,22 +76,51 @@ float* vse_synthesize_track(CNoteEvent* notes, int note_cnt, CPitchEvent* p_even
     return buffer;
 }
 
-// Pythonとの直接の連絡口
+// --- Pythonからのメイン窓口 ---
 EXPORT float* request_synthesis_full(SynthesisRequest request, int* out_sample_count) {
-    // 全体の長さを計算 (最後の音符の終了時間を探す)
+    // 1. 関数の最初で必ず型を宣言する
+    float* audio_data = NULL;
     float max_time = 0.0f;
+
+    // 2. 終了時間の計算
     for (int i = 0; i < request.note_count; i++) {
         float end = request.notes[i].start_time + request.notes[i].duration;
-        if (end > max_time) max_time = end;
+        if (end > max_time) {
+            max_time = end;
+        }
     }
-    max_time += 0.5f; // 余韻
+    max_time += 1.0f; // 少し余白
 
-    return vse_synthesize_track(
-        request.notes, request.note_count,
-        request.pitch_events, request.pitch_event_count,
-        0.0f, max_time,
+    // 3. 宣言した audio_data に結果を代入する
+    float* audio_data = vse_synthesize_track(
+        request.notes, 
+        request.note_count,
+        request.pitch_events, 
+        request.pitch_event_count,
+        0.0f, 
+        max_time,
         out_sample_count
-    );
-    
+    ); 
+
+
+    // 4. 最後に return する
     return audio_data;
 }
+
+
+// --- 合成結果の解放 ---       
+EXPORT void free_synthesized_audio(float* audio_data) {
+    if (audio_data) {
+        free(audio_data);
+    }
+}
+// --- エンジン終了処理 ---
+EXPORT void shutdown_engine() {
+    for (int i = 0; i < g_lib_cnt; i++) {
+        if (g_lib[i].samples) {
+            free(g_lib[i].samples);
+            g_lib[i].samples = NULL;
+        }
+    }
+    g_lib_cnt = 0;
+} 
