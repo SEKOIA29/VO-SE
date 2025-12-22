@@ -2,6 +2,35 @@
 #include <math.h>
 #include <string.h>
 
+
+
+typedef struct {
+    char name[32];      // "a", "i", "u" など
+    float* samples;      // WAVの生データ
+    uint64_t count;      // サンプル数
+} Phoneme;
+
+Phoneme g_library[128];  // 最大128音素まで保持
+int g_phoneme_count = 0;
+
+// キャラクター切り替え時に呼ばれる
+EXPORT int init_engine(const char* char_id, const char* audio_dir) {
+    // 1. 今まで読み込んでいた音源をメモリから消す（メモリリーク防止）
+    for (int i = 0; i < g_phoneme_count; i++) {
+        if (g_library[i].samples) free(g_library[i].samples);
+    }
+    g_phoneme_count = 0;
+
+    // 2. audio_dir をスキャンして新しいWAVを読み込む
+    // (ここに前述の dr_wav を使ったロード処理を書く)
+    printf("C-Engine: キャラクター %s の音源を %s から読み込みます...\n", char_id, audio_dir);
+    
+    return 0; // 成功
+}
+
+
+
+
 // --- ユーティリティ関数 ---
 void resample_linear(const float* input, int input_len, float* output, int output_len) {
     for (int i = 0; i < output_len; i++) {
