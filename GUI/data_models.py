@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from typing import List, Dict
+from dataclasses import dataclass
 
 
 class PitchEvent:
@@ -96,5 +97,13 @@ class CharacterInfo:
     description: str
     engine_params: Dict
     waveform_type: str = "sample_based"
+
+
+@dataclass
+class CharacterInfo:
+    id: str           # "char_001" など
+    name: str         # "アオイ" など
+    audio_dir: str    # "audio_data/aoi" などのパス
+
 
 
