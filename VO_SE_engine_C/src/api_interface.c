@@ -1,17 +1,7 @@
-/* src/api_interface.c の冒頭部分 */
-#include <stdint.h>  // ← これを最初に追加（uint64_t 等を定義するため）
-#include <stdlib.h>
-#include <stdio.h>
-
-#ifndef DR_WAV_IMPLEMENTATION
-#define DR_WAV_IMPLEMENTATION
-#endif
-#include "dr_wav.h"  // その後に include する
+#include "synthesizer_core.h"
+#include <math.h>
 #include <string.h>
-#include <dirent.h>
-#include <math.h>   
-#include "api_interface.h"
-#define EXPORT __attribute__((visibility("default")))
+
 // --- ユーティリティ関数 ---
 void resample_linear(const float* input, int input_len, float* output, int output_len) {
     for (int i = 0; i < output_len; i++) {
