@@ -52,6 +52,24 @@ class VO_SE_Engine:
         except Exception as e:
             print(f"C-Engine Load Error: {e}\nビルドされたライブラリが lib/ にあるか確認してください。")
 
+    　　# GUI/vo_se_engine.py の VO_SE_Engine クラス内に追加
+
+　　　def load_character(self, char_id: str, folder_path: str):
+        """
+        C言語エンジンに音源の読み込みを命令する
+        """
+        path_bytes = os.path.abspath(folder_path).encode('utf-8')
+        id_bytes = char_id.encode('utf-8')
+    
+        # C言語の init_engine を呼び出す
+        result = self.lib.init_engine(id_bytes, path_bytes)
+    
+        if result == 0:
+           print(f"成功: キャラクター {char_id} をロードしました。")
+        else:
+           print(f"失敗: {folder_path} が見つからないか、読み込めませんでした。")
+
+
     def _setup_c_interfaces(self):
         """C言語関数の引数と戻り値を設定"""
         # init_engine(char* id, char* dir)
