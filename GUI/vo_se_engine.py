@@ -7,6 +7,49 @@ import numpy as np
 import pyaudio
 from data_models import NoteEvent, PitchEvent, CharacterInfo
 
+# GUI/vo_se_engine.py 内に追加・修正
+
+class VO_SE_Engine:
+    def __init__(self, sample_rate=44100):
+        # (中略：ライブラリのロードなど)
+        
+        # キャラクターの名簿（ここに情報を登録していく）
+        self.available_characters = {
+            "aoi": CharacterInfo(id="aoi", name="アオイ", audio_dir="./audio_data/aoi"),
+            "mirai": CharacterInfo(id="mirai", name="ミライ", audio_dir="./audio_data/mirai")
+        }
+        self.current_char_id = None
+
+    def switch_character(self, char_id: str):
+        """
+        GUIから選ばれたIDを元に、Cエンジンへ切り替えを指示する
+        """
+        if char_id not in self.available_characters:
+            print(f"エラー: {char_id} というキャラクターは名簿にありません。")
+            return False
+        
+        char = self.available_characters[char_id]
+        
+        # パスを絶対パスに変換（C言語側で確実に読み込むため）
+        abs_path = os.path.abspath(char.audio_dir)
+        
+        # C言語の init_engine(char* id, char* dir) を呼び出し
+        # 2025年現在、文字列は .encode('utf-8') で渡すのが鉄則です
+        result = self.lib.init_engine(
+            char.id.encode('utf-8'), 
+            abs_path.encode('utf-8')
+        )
+        
+        if result == 0:
+            self.current_char_id = char_id
+            print(f"C-Engine: {char.name} への切り替えに成功しました。")
+            return True
+        else:
+            print(f"C-Engine: {char.name} の音源ロードに失敗しました。")
+            return False
+
+
+
 # --- 1. C言語と共通のデータ構造定義 (ctypes) ---
 
 class CPitchEvent(ctypes.Structure):
