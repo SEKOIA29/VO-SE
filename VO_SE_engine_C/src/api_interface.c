@@ -1,6 +1,99 @@
+#include <dirent.h>   // フォルダスキャン用
+#include <stdio.h>    // printf用
+#include <stdlib.h>   // malloc, free用
+#include <string.h>   // strstr, strncpy用
+#include <stdint.h>   // uint64_t用（重要）
+
+// dr_wavの実装を有効にするマクロ（このファイルに1回だけ書く）
+#ifndef DR_WAV_IMPLEMENTATION
+#define DR_WAV_IMPLEMENTATION
+#endif
+#include "dr_wav.h"
+
+// 自作ヘッダー（構造体の定義など）
+#include "audio_types.h"
+#include "api_interface.h"
 #include "synthesizer_core.h"
-#include <math.h>
-#include <string.h>
+
+// WindowsとMacの両方で関数を公開するためのマクロ
+#ifdef _WIN32
+  #define EXPORT __declspec(dllexport)
+#else
+  #define EXPORT __attribute__((visibility("default")))
+#endif
+
+
+
+// 音素ライブラリの最大数
+#define MAX_LIB_SIZE 256
+
+typedef struct {
+    char name[MAX_PHONEMES_COUNT]; // "a", "k", "s" など
+    float* samples;
+    uint64_t count;
+} Phoneme;
+
+static Phoneme g_lib[MAX_LIB_SIZE];
+static int g_lib_cnt = 0;
+
+// エンジンの初期化（自動スキャン）
+EXPORT int init_engine(const char* char_id, const char* audio_dir) {
+    // 1. 既存のメモリを解放（キャラクター切り替え時用）
+    for (int i = 0; i < g_lib_cnt; i++) {
+        if (g_lib[i].samples) {
+            drwav_free(g_lib[i].samples, NULL); // dr_wav専用の解放
+        }
+    }
+    g_lib_cnt = 0;
+
+    printf("C-Engine: Scanning directory [%s] for character [%s]...\n", audio_dir, char_id);
+
+    // 2. ディレクトリを開く
+    DIR *dir = opendir(audio_dir);
+    if (!dir) {
+        printf("Error: Could not open directory %s\n", audio_dir);
+        return -1;
+    }
+
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+        // .wav ファイルを探す
+        if (strstr(ent->d_name, ".wav") != NULL) {
+            if (g_lib_cnt >= MAX_LIB_SIZE) break;
+
+            char filepath[512];
+            snprintf(filepath, sizeof(filepath), "%s/%s", audio_dir, ent->d_name);
+
+            unsigned int channels;
+            unsigned int sampleRate;
+            drwav_uint64 totalPCMFrameCount;
+            
+            // WAV読み込み
+            float* pSampleData = drwav_open_file_and_read_pcm_frames_f32(
+                filepath, &channels, &sampleRate, &totalPCMFrameCount, NULL);
+
+            if (pSampleData) {
+                // ファイル名から音素名を作る (例: "a.wav" -> "a")
+                char ph_name[MAX_PHONEMES_COUNT];
+                strncpy(ph_name, ent->d_name, strlen(ent->d_name) - 4);
+                ph_name[strlen(ent->d_name) - 4] = '\0';
+
+                // ライブラリに登録
+                strncpy(g_lib[g_lib_cnt].name, ph_name, MAX_PHONEMES_COUNT);
+                g_lib[g_lib_cnt].samples = pSampleData;
+                g_lib[g_lib_cnt].count = totalPCMFrameCount;
+                
+                printf("  -> Loaded: [%s] (%llu samples)\n", ph_name, (unsigned long long)totalPCMFrameCount);
+                g_lib_cnt++;
+            }
+        }
+    }
+    closedir(dir);
+    printf("C-Engine: Successfully loaded %d phonemes.\n", g_lib_cnt);
+    return 0;
+}
+
+
 
 
 
