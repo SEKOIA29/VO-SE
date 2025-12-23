@@ -9,16 +9,54 @@ from data_models import NoteEvent, PitchEvent, CharacterInfo
 
 # GUI/vo_se_engine.py 内に追加・修正
 
+import ctypes
+import os
+import platform
+import pyaudio
+
 class VO_SE_Engine:
-    def __init__(self, sample_rate=44100):
-        # (中略：ライブラリのロードなど)
-        
-        # キャラクターの名簿（ここに情報を登録していく）
-        self.available_characters = {
-            "aoi": CharacterInfo(id="aoi", name="アオイ", audio_dir="./audio_data/aoi"),
-            "mirai": CharacterInfo(id="mirai", name="ミライ", audio_dir="./audio_data/mirai")
-        }
-        self.current_char_id = None
+    def __init__(self, sample_rate: int = 44100):
+        self.sample_rate = sample_rate
+        self.active_character_id = None
+        self._keep_alive = []  # C側へ渡すデータのメモリ解放を防ぐ
+
+        # --- 1. C 言語ライブラリ (.dylib / .dll) のパスを特定 ---
+        # OS に応じて拡張子を自動判別
+        ext = ".dylib" if platform.system() == "Darwin" else ".dll"
+        # ライブラリの保存場所（VO_SE_engine_C/lib/ 内）を指定
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        lib_path = os.path.join(base_dir, "../VO_SE_engine_C/lib/engine" + ext)
+
+        # --- 2. ライブラリを Python にロード ---
+        try:
+            # これが「連絡口」を開く核心の処理です
+            self.lib = ctypes.CDLL(lib_path)
+            
+            # C 言語の関数の「引数」と「戻り値」の型を Python に教えてあげる (大事！)
+            self._setup_c_interfaces()
+            print(f"C-Engine Loaded Successfully: {lib_path}")
+        except Exception as e:
+            print(f"C-Engine Load Error: {e}")
+            print("注意: 先に 'make' 等で C 言語をビルドして engine" + ext + " を作成してください。")
+
+        # --- 3. 音声再生用 (PyAudio) の初期化 ---
+        self.pyaudio_instance = pyaudio.PyAudio()
+
+    def _setup_c_interfaces(self):
+        """C 言語の関数を Python で正しく呼べるように設定する"""
+        # init_engine(char* char_id, char* audio_dir)
+        self.lib.init_engine.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+        self.lib.init_engine.restype = ctypes.c_int
+
+        # request_synthesis_full(...) -> float*
+        from .vo_se_engine import SynthesisRequest # 構造体定義
+        self.lib.request_synthesis_full.argtypes = [SynthesisRequest, ctypes.POINTER(ctypes.c_int)]
+        self.lib.request_synthesis_full.restype = ctypes.POINTER(ctypes.c_float)
+
+        # vse_free_buffer(float*)
+        self.lib.vse_free_buffer.argtypes = [ctypes.POINTER(ctypes.c_float)]
+        self.lib.vse_free_buffer.restype = None
+
 
     def switch_character(self, char_id: str):
         """
