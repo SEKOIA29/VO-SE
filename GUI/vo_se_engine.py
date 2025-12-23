@@ -7,12 +7,20 @@ import numpy as np
 import pyaudio
 from data_models import NoteEvent, PitchEvent, CharacterInfo
 
-# GUI/vo_se_engine.py 内に追加・修正
+import sys
 
-import ctypes
-import os
-import platform
-import pyaudio
+def get_base_path():
+    # Nuitka/PyInstallerで固められた際の一時パスを取得
+    if hasattr(sys, '_MEIPASS'):
+        return sys._MEIPASS
+    return os.path.abspath(".")
+
+# パス指定の修正例
+base = get_base_path()
+lib_path = os.path.join(base, "VO_SE_engine_C/lib/engine.dylib")
+audio_path = os.path.join(base, "audio_data/aoi")
+
+
 
 class VO_SE_Engine:
     def __init__(self, sample_rate: int = 44100):
