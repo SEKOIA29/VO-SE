@@ -10,15 +10,27 @@ from data_models import NoteEvent, PitchEvent, CharacterInfo
 import sys
 
 def get_base_path():
-    # Nuitka/PyInstallerで固められた際の一時パスを取得
+    """実行ファイル(Nuitka/PyInstaller)化されていても、開発中でも正しくルートを返す"""
     if hasattr(sys, '_MEIPASS'):
+        # パッケージ化（1ファイル化）された時の一時展開先
         return sys._MEIPASS
-    return os.path.abspath(".")
+    # 開発中の実行時（GUI/vo_se_engine.pyから見たプロジェクトルート）
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-# パス指定の修正例
+# --- 実際の使用例 ---
 base = get_base_path()
-lib_path = os.path.join(base, "VO_SE_engine_C/lib/engine.dylib")
-audio_path = os.path.join(base, "audio_data/aoi")
+
+# 拡張子の自動判別
+ext = ".dll" if platform.system() == "Windows" else ".dylib"
+
+# C言語エンジンのパスを結合
+lib_path = os.path.join(base, "VO_SE_engine_C", "lib", f"engine{ext}")
+
+# 音源フォルダのパスを結合
+audio_dir = os.path.join(base, "audio_data")
+
+print(f"Loading Engine from: {lib_path}")
+print(f"Audio Data Path: {audio_dir}")
 
 
 
