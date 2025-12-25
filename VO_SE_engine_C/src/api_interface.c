@@ -22,6 +22,21 @@
 // 音素ライブラリの最大数
 #define MAX_LIB_SIZE 256
 
+#include "../include/api_interface.h"
+#include "../include/synthesizer_core.h"
+#include <stdio.h>
+
+static float current_frequency = 440.0f;
+
+// Pythonから呼び出されるEXPORT関数
+void set_target_frequency(float freq) {
+    current_frequency = freq;
+    // ここで synthesizer_core の波形生成パラメータを更新する
+    update_synth_pitch(current_frequency);
+    printf("C-Engine: 音程を %f Hz に変更しました\n", freq);
+}
+
+
 typedef struct {
     char name[MAX_PHONEMES_COUNT]; // "a", "k", "s" など
     float* samples;
