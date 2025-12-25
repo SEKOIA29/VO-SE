@@ -651,3 +651,13 @@ class MainWindow(QMainWindow):
 
         event.accept()
 
+
+def export_to_wav(self, notes, filename="output/result.wav"):
+    # 全てのノート情報をC言語が読める構造体配列に変換して渡す
+    # C言語側で「全ノートを繋ぎ合わせて一つのWAVにする」処理を実行させる
+    self.lib.start_export(filename.encode('utf-8'))
+    for note in notes:
+        hz = self.midi_to_hz(note.pitch)
+        self.lib.add_note_to_queue(hz, note.start_time, note.duration)
+    self.lib.execute_render() # 実行
+
