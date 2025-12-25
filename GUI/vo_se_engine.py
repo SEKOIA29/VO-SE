@@ -19,16 +19,28 @@ class VoSeEngineWrapper:
             self.lib.set_target_frequency.argtypes = [ctypes.c_float]
         except Exception as e:
             print(f"DLLロード失敗: {e}")
+        # OSに応じたライブラリのロード
+        dll_path = os.path.abspath("./VO_SE_engine_C/lib/engine.dll")
+        self.lib = ctypes.CDLL(dll_path)
+
+        # C関数の型定義
+        # void set_frequency(float hz)
+        self.lib.set_frequency.argtypes = [ctypes.c_float]
+        self.lib.play_note.argtypes = []
 
     def midi_to_hz(self, midi_note):
-        """MIDI番号を周波数(Hz)に変換する数学的公式"""
+        # MIDIノート番号から周波数(Hz)への変換公式
         return 440.0 * math.pow(2.0, (midi_note - 69.0) / 12.0)
 
     def set_pitch(self, midi_note):
-        """タイムラインから呼ばれ、C言語のエンジンに周波数を送る"""
-        freq = self.midi_to_hz(midi_note)
-        print(f"Cエンジンに周波数送信: {freq:.2f}Hz")
-        self.lib.set_target_frequency(freq)
+        hz = self.midi_to_hz(midi_note)
+        print(f"DEBUG: 周波数 {hz:.2f}Hz をエンジンに送信")
+        self.lib.set_frequency(hz)
+
+    def play_preview(self):
+        self.lib.play_note()
+
+
 
 def get_base_path():
     """実行ファイル(Nuitka/PyInstaller)化されていても、開発中でも正しくルートを返す"""
