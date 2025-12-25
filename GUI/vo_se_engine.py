@@ -6,8 +6,29 @@ import platform
 import numpy as np
 import pyaudio
 from data_models import NoteEvent, PitchEvent, CharacterInfo
-
+import ctypes
+import math
 import sys
+
+class VoSeEngineWrapper:
+    def __init__(self):
+        # C言語でビルドしたDLLをロード
+        try:
+            self.lib = ctypes.CDLL("./VO_SE_engine_C/lib/engine.dll")
+            # C関数の引数型定義: void set_target_frequency(float freq)
+            self.lib.set_target_frequency.argtypes = [ctypes.c_float]
+        except Exception as e:
+            print(f"DLLロード失敗: {e}")
+
+    def midi_to_hz(self, midi_note):
+        """MIDI番号を周波数(Hz)に変換する数学的公式"""
+        return 440.0 * math.pow(2.0, (midi_note - 69.0) / 12.0)
+
+    def set_pitch(self, midi_note):
+        """タイムラインから呼ばれ、C言語のエンジンに周波数を送る"""
+        freq = self.midi_to_hz(midi_note)
+        print(f"Cエンジンに周波数送信: {freq:.2f}Hz")
+        self.lib.set_target_frequency(freq)
 
 def get_base_path():
     """実行ファイル(Nuitka/PyInstaller)化されていても、開発中でも正しくルートを返す"""
