@@ -10,6 +10,31 @@ import ctypes
 import math
 import sys
 
+# C言語側の構造体と合わせる
+class C_NoteEvent(ctypes.Structure):
+    _fields_ = [
+        ("frequency", ctypes.c_float),
+        ("duration", ctypes.c_float),
+        ("lyric", ctypes.c_char_p)
+    ]
+
+def export_wav(self, notes_list, output_path="output/output.wav"):
+    # 1. PythonのノートリストをC言語用の構造体配列に変換
+    c_notes_array = (C_NoteEvent * len(notes_list))()
+    
+    for i, note in enumerate(notes_list):
+        c_notes_array[i].frequency = self.midi_to_hz(note.pitch)
+        c_notes_array[i].duration = note.duration
+        c_notes_array[i].lyric = note.lyric.encode('utf-8')
+
+    # 2. C言語の書き出し関数を呼び出す
+    self.lib.execute_render_to_file(
+        output_path.encode('utf-8'), 
+        c_notes_array, 
+        len(notes_list)
+    )
+    
+
 class VoSeEngineWrapper:
     def __init__(self):
         # C言語でビルドしたDLLをロード
