@@ -30,6 +30,58 @@ class TimelineWidget(QWidget):
  
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.pixels_per_second = 100
+        self.note_height = 20  # 1音階あたりの高さ（ピクセル）
+        self.notes = []        # NoteEventオブジェクトのリスト
+        self.setMouseTracking(True)
+        
+        # エンジンの初期化（実際はmain_windowなどで保持）
+        # self.engine = VoSeEngineWrapper()
+
+    def y_to_midi(self, y):
+        """Y座標をMIDIノート番号（音程）に変換"""
+        # 例：Y=0をノート番号84(C5)、下にいくほど低くなる設定
+        base_note = 84 
+        return base_note - (y // self.note_height)
+
+    def midi_to_y(self, midi_note):
+        """MIDIノート番号をY座標に変換"""
+        base_note = 84
+        return (base_note - midi_note) * self.note_height
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        # 背景（ピアノロール風の横線）
+        self._draw_piano_roll_grid(painter)
+        
+        for note in self.notes:
+            # note.pitch にMIDI番号が入っている想定
+            x = int(note.start_time * self.pixels_per_second)
+            y = self.midi_to_y(note.pitch)
+            width = int(note.duration * self.pixels_per_second)
+            
+            rect = QRect(x, y, width, self.note_height)
+            painter.setBrush(QColor(150, 200, 255))
+            painter.drawRect(rect)
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, note.lyric)
+
+    def _draw_piano_roll_grid(self, painter):
+        painter.setPen(QPen(QColor(230, 230, 230), 1))
+        for i in range(0, self.height(), self.note_height):
+            painter.drawLine(0, i, self.width(), i)
+
+    def mouseReleaseEvent(self, event):
+        # クリックした位置から音程を特定
+        midi_note = self.y_to_midi(int(event.position().y()))
+        print(f"選択された音程: MIDI {midi_note}")
+        
+        # 【重要】ここでC言語エンジンへ音程変更を通知する
+        # self.engine.set_pitch(midi_note) 
+        # self.engine.render_preview()
+
+
+        def __init__(self, parent=None):
+        super().__init__(parent)
         self.setMinimumSize(400, 200)
         self.setFocusPolicy(Qt.StrongFocus)
         self.selection_start_pos = None
