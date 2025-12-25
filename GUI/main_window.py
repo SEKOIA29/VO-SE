@@ -661,3 +661,17 @@ def export_to_wav(self, notes, filename="output/result.wav"):
         self.lib.add_note_to_queue(hz, note.start_time, note.duration)
     self.lib.execute_render() # 実行
 
+
+def on_export_button_clicked(self):
+    # タイムライン上の全ノートを取得
+    notes = self.timeline_widget.get_all_notes()
+    
+    if not notes:
+        print("ノートがありません")
+        return
+
+    # 保存先を指定して実行
+    output_file = "output/render_result.wav"
+    self.engine_wrapper.export_wav(notes, output_file)
+    print(f"書き出し成功: {output_file}")
+
