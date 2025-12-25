@@ -31,10 +31,10 @@ class NoteEvent:
     # ★修正: phonemes を引数とプロパティに追加
     def __init__(self, note_number: int, start_time: float, duration: float, velocity: int, lyrics: str = "", phonemes: list[str] = None):
         self.note_number = note_number
-        self.start_time = start_time
-        self.duration = duration
-        self.velocity = velocity
-        self.lyrics = lyrics
+        self.start_time = start_time  # 開始秒
+        self.duration = duration      # 長さ（秒）
+        self.pitch = pitch            # MIDIノート番号 (69 = A4 = 440Hz)
+        self.lyric = lyric            # 歌詞（"a", "i" など）
         # ★修正: デフォルト値を None から [] に変更
         self.phonemes = phonemes if phonemes is not None else [] 
         self.is_selected = False # GUI操作のための情報
