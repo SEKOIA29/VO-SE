@@ -2,6 +2,17 @@
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
+#include "../include/synthesizer_core.h"
+
+void update_resampling_ratio(float target_hz) {
+    float original_hz = 440.0f; // 元の録音データの基準音程
+    float ratio = target_hz / original_hz;
+    
+    // この ratio (倍率) を使って、
+    // 波形データの読み飛ばし間隔（リサンプリング歩進値）を決定する
+    set_engine_playback_speed(ratio);
+}
+
 
 // 周波数計算
 float note_to_hz(int note_number) {
