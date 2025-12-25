@@ -10,6 +10,16 @@ import ctypes
 import math
 import sys
 
+def get_resource_path(relative_path):
+    # PyInstallerが展開する一時フォルダのパス、または通常実行時のパスを取得
+    base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
+    return os.path.join(base_path, relative_path)
+
+# DLLの読み込み部分
+dll_name = "engine.dll" if os.name == 'nt' else "engine.dylib"
+dll_path = get_resource_path(f"VO_SE_engine_C/lib/{dll_name}")
+self.lib = ctypes.CDLL(dll_path)
+
 # C言語側の構造体と合わせる
 class C_NoteEvent(ctypes.Structure):
     _fields_ = [
