@@ -29,25 +29,25 @@ class TimelineWidget(QWidget):
     notes_changed_signal = Signal()
  
     def __init__(self, parent=None):
+   def __init__(self, parent=None):
         super().__init__(parent)
+        self.engine = VoSeEngineWrapper()
         self.pixels_per_second = 100
-        self.note_height = 20  # 1音階あたりの高さ（ピクセル）
-        self.notes = []        # NoteEventオブジェクトのリスト
-        self.setMouseTracking(True)
-        
-        # エンジンの初期化（実際はmain_windowなどで保持）
-        # self.engine = VoSeEngineWrapper()
+        self.note_height = 20  # 1音階の高さ
+        self.base_midi = 84    # 上端の音程(C5)
+        self.notes = []
 
     def y_to_midi(self, y):
-        """Y座標をMIDIノート番号（音程）に変換"""
-        # 例：Y=0をノート番号84(C5)、下にいくほど低くなる設定
-        base_note = 84 
-        return base_note - (y // self.note_height)
+        return self.base_midi - (y // self.note_height)
 
-    def midi_to_y(self, midi_note):
-        """MIDIノート番号をY座標に変換"""
-        base_note = 84
-        return (base_note - midi_note) * self.note_height
+    def mousePressEvent(self, event):
+        # クリックした場所の音程を取得
+        midi_note = self.y_to_midi(event.position().y())
+        
+        # エンジンに音程を伝えて音を出す（プレビュー）
+        self.engine.set_pitch(midi_note)
+        self.engine.play_preview() 
+        self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -80,7 +80,7 @@ class TimelineWidget(QWidget):
         # self.engine.render_preview()
 
 
-        def __init__(self, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(400, 200)
         self.setFocusPolicy(Qt.StrongFocus)
