@@ -26,7 +26,20 @@
 #include "../include/synthesizer_core.h"
 #include <stdio.h>
 
-static float current_frequency = 440.0f;
+// エンジン内部で保持する現在の周波数
+float global_frequency = 440.0f;
+
+// Pythonから呼ばれる関数
+__declspec(dllexport) void set_frequency(float hz) {
+    global_frequency = hz;
+    // synthesizer_core.c 内の合成パラメータを更新
+    update_resampling_ratio(hz); 
+}
+
+__declspec(dllexport) void play_note() {
+    // 実際にWAVデータを読み込み、global_frequencyでリサンプリングして再生
+    render_audio_stream();
+}
 
 // Pythonから呼び出されるEXPORT関数
 void set_target_frequency(float freq) {
