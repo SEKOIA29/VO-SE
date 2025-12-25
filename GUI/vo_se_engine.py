@@ -19,6 +19,12 @@ def get_resource_path(relative_path):
 dll_name = "engine.dll" if os.name == 'nt' else "engine.dylib"
 dll_path = get_resource_path(f"VO_SE_engine_C/lib/{dll_name}")
 self.lib = ctypes.CDLL(dll_path)
+if getattr(sys, 'frozen', False):
+    # インストーラー（実行ファイル）として動いている場合
+    base_dir = sys._MEIPASS
+else:
+    # 通常のPythonスクリプトとして動いている場合
+    base_dir = os.path.dirname(os.path.abspath(__file__))
 
 # C言語側の構造体と合わせる
 class C_NoteEvent(ctypes.Structure):
