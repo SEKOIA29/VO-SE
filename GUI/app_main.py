@@ -9,6 +9,16 @@ from GUI.main_window import MainWindow
 # PySide6 の QApplication クラスをインポートする
 from PySide6.QtWidgets import QApplication
 
+import ctypes
+import os
+
+# Windowsに「これは別の独立したアプリですよ」と教える設定
+if os.name == 'nt':
+    myappid = 'mycompany.myproduct.vo-se.1.0' # 任意のID
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+
+
+
 # ----------------------------------------------------------------------
 # Pythonスクリプトが直接実行された場合にのみ、以下のブロックが実行される
 # ----------------------------------------------------------------------
