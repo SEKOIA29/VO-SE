@@ -11,8 +11,14 @@ from PySide6.QtWidgets import QApplication
 
 import ctypes
 import os
+import sys
 
-# Windowsに「これは別の独立したアプリですよ」と教える設定
+# 高DPIディスプレイ対応の設定
+app = QApplication(sys.argv)
+app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps)
+
+
+# Windowsに独立してると教えるやつ
 if os.name == 'nt':
     myappid = 'mycompany.myproduct.vo-se.1.0' # 任意のID
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
