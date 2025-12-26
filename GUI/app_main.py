@@ -1,42 +1,56 @@
 # app_main.py
-
 import sys
-# main_window.py ファイルから MainWindow クラスをインポートする
-from GUI.main_window import MainWindow 
-
-
-
-# PySide6 の QApplication クラスをインポートする
-from PySide6.QtWidgets import QApplication
-
-import ctypes
 import os
-import sys
+import time
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import Qt
 
+# PyInstallerのスプラッシュスクリーン制御用
 try:
     import pyi_splash
 except ImportError:
     pyi_splash = None
 
-def main():
-    # 1. 高DPI対応などの初期設定
-    # (前述のコードをここに記述)
+# 自作モジュールのインポート（パスはプロジェクト構成に合わせる）
+from GUI.main_window import MainWindow
+from GUI.vo_se_engine import VoSeEngineWrapper
 
-    # 2. アプリの初期化（重い処理、DLLロードなど）
-    # ここでエンジンやGUIのセットアップを行う
+def main():
+    # 1. 高DPI対応（GUIを表示する前に必須）
+    if hasattr(Qt.ApplicationAttribute, 'AA_UseHighDpiPixmaps'):
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
+
+    app = QApplication(sys.argv)
+
+    # --- 2. アプリの初期化（スプラッシュ表示中に行う処理） ---
     
-    # 3. 準備ができたらスプラッシュ画面を消す
+    # メッセージの更新（スプラッシュ上に文字を出せる場合）
+    if pyi_splash:
+        pyi_splash.update_text("エンジンを初期化中...")
+
+    # (A) C言語エンジンのロード
+    # ここで DLL/dylib のロードと関数定義が行われる
+    engine = VoSeEngineWrapper() 
+
+    if pyi_splash:
+        pyi_splash.update_text("音源データを読み込み中...")
+
+    # (B) メインウィンドウの作成
+    # ここで TimelineWidget やサイドバーなどの重いGUIパーツが生成される
+    window = MainWindow(engine=engine)
+
+    # (C) 擬似的な待機（ロードが速すぎてスプラッシュが見えない場合用）
+    # time.sleep(1) 
+
+    # --- 3. セットアップ完了、スプラッシュを閉じる ---
     if pyi_splash:
         pyi_splash.close()
-        
-    # 4. メインウィンドウを表示
-    # window.show()
-    # app.exec()
+
+    # 4. メインウィンドウを表示してアプリ開始
+    window.show()
+    sys.exit(app.exec())
 
 
-# 高DPIディスプレイ対応の設定
-app = QApplication(sys.argv)
-app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps)
 
 
 # Windowsに独立してると教えるやつ
