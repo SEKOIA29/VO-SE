@@ -13,6 +13,27 @@ import ctypes
 import os
 import sys
 
+try:
+    import pyi_splash
+except ImportError:
+    pyi_splash = None
+
+def main():
+    # 1. 高DPI対応などの初期設定
+    # (前述のコードをここに記述)
+
+    # 2. アプリの初期化（重い処理、DLLロードなど）
+    # ここでエンジンやGUIのセットアップを行う
+    
+    # 3. 準備ができたらスプラッシュ画面を消す
+    if pyi_splash:
+        pyi_splash.close()
+        
+    # 4. メインウィンドウを表示
+    # window.show()
+    # app.exec()
+
+
 # 高DPIディスプレイ対応の設定
 app = QApplication(sys.argv)
 app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps)
