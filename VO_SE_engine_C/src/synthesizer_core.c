@@ -1,15 +1,77 @@
-#include "synthesizer_core.h"
+#include <stdlib.h>
 #include <math.h>
 #include <string.h>
-#include <stdlib.h>
 #include "../include/synthesizer_core.h"
+#include "../include/dr_wav.h"
 
-#include "../include/synthesizer_core.h"
-#define DR_WAV_IMPLEMENTATION
-#include "../include/dr_wav.h" // WAV書き出しライブラリ
+// 10msのクロスフェード（44100Hzの場合、441サンプル）
+#define CROSSFADE_LEN 441
 
-// 書き出し用の設定
-void execute_render_to_file(const char* filename, NoteEvent* notes, int note_count) {
+/**
+ * 線形クロスフェードを適用する内部関数
+ * out: 出力先
+ * prev_buf: 前の音素の末尾
+ * next_buf: 次の音素の先頭
+ * len: フェードさせるサンプル数
+ */
+static void apply_linear_crossfade(float* out, const float* prev_buf, const float* next_buf, int len) {
+    for (int i = 0; i < len; i++) {
+        // 0.0から1.0へ変化する比率
+        float ratio = (float)i / (float)len;
+        // 前の音をフェードアウト(1->0)、次の音をフェードイン(0->1)
+        out[i] = (prev_buf[i] * (1.0f - ratio)) + (next_buf[i] * ratio);
+    }
+}
+
+/**
+ * 指定された周波数(Hz)に基づいてリサンプリングを行いながら波形を生成する
+ */
+void process_note_with_fade(drwav* wav, float target_hz, float duration_sec, const char* lyric, float* overlap_buffer, int* has_overlap) {
+    // 1. 音素データの読み込み（実際はaudio_data/からlyricに応じたWAVをロード）
+    // ここでは簡易的に、ロード済みのソースバッファがあると仮定
+    float source_hz = 440.0f; // 元の音素の基準ピッチ
+    float speed_ratio = target_hz / source_hz;
+    
+    int sample_rate = 44100;
+    int total_samples = (int)(duration_sec * sample_rate);
+    
+    // 出力用一時バッファ
+    float* current_note_buf = (float*)malloc(sizeof(float) * total_samples);
+    
+    // --- [リサンプリング処理] ---
+    for (int i = 0; i < total_samples; i++) {
+        // speed_ratioに応じて読み取り位置を計算（簡易的な線形補間が望ましい）
+        float read_pos = i * speed_ratio;
+        // current_note_buf[i] = read_sample(lyric_data, read_pos);
+    }
+
+    // --- [クロスフェード適用] ---
+    if (*has_overlap) {
+        // 前のノートとの重なりがある場合、冒頭部分をフェード
+        apply_linear_crossfade(current_note_buf, overlap_buffer, current_note_buf, CROSSFADE_LEN);
+    }
+
+    // 2. WAVファイルへの書き出し（フェード後の本体部分）
+    // 末尾のCROSSFADE_LEN分は次のノートのために取っておく
+    int write_len = total_samples - CROSSFADE_LEN;
+    
+    // 16bit PCMに変換して書き込み
+    for (int i = 0; i < write_len; i++) {
+        int16_t pcm = (int16_t)(current_note_buf[i] * 32767.0f);
+        drwav_write_pcm_frames(wav, 1, &pcm);
+    }
+
+    // 3. 次のノートのために、今回の末尾部分をオーバーラップバッファに保存
+    memcpy(overlap_buffer, &current_note_buf[write_len], sizeof(float) * CROSSFADE_LEN);
+    *has_overlap = 1;
+
+    free(current_note_buf);
+}
+
+/**
+ * Pythonから呼ばれるメインのレンダリング関数
+ */
+void execute_render_to_file(const char* output_path, NoteEvent* notes, int count) {
     drwav_data_format format;
     format.container = drwav_container_riff;
     format.format = DR_WAV_FORMAT_PCM;
@@ -18,63 +80,23 @@ void execute_render_to_file(const char* filename, NoteEvent* notes, int note_cou
     format.bitsPerSample = 16;
 
     drwav wav;
-    if (!drwav_init_file_write(&wav, filename, &format, NULL)) return;
+    if (!drwav_init_file_write(&wav, output_path, &format, NULL)) return;
 
-    for (int i = 0; i < note_count; i++) {
-        // ノートごとの音程（周波数）からリサンプリング倍率を計算
-        float ratio = notes[i].frequency / 440.0f; 
-        
-        // 元の音素データを読み込み、倍率（ratio）に基づいて
-        // 新しいピッチの波形を生成し、wavファイルへ書き込む
-        render_and_write_pcm(&wav, notes[i].lyric, ratio, notes[i].duration);
+    float overlap_buffer[CROSSFADE_LEN];
+    int has_overlap = 0;
+
+    for (int i = 0; i < count; i++) {
+        process_note_with_fade(&wav, notes[i].frequency, notes[i].duration, notes[i].lyric, overlap_buffer, &has_overlap);
+    }
+
+    // 最後に残ったバッファを書き出し
+    if (has_overlap) {
+        for (int i = 0; i < CROSSFADE_LEN; i++) {
+            int16_t pcm = (int16_t)(overlap_buffer[i] * 32767.0f);
+            drwav_write_pcm_frames(&wav, 1, &pcm);
+        }
     }
 
     drwav_uninit(&wav);
-    printf("C-Engine: %s へ書き出し完了しました。\n", filename);
 }
 
-
-
-
-void update_resampling_ratio(float target_hz) {
-    float original_hz = 440.0f; // 元の録音データの基準音程
-    float ratio = target_hz / original_hz;
-    
-    // この ratio (倍率) を使って、
-    // 波形データの読み飛ばし間隔（リサンプリング歩進値）を決定する
-    set_engine_playback_speed(ratio);
-}
-
-
-// 周波数計算
-float note_to_hz(int note_number) {
-    return 440.0f * powf(2.0f, (note_number - 69) / 12.0f);
-}
-
-// リサンプリング（線形補間）
-void resample_linear(float* src, int src_len, float* dest, int dest_len) {
-    if (dest_len <= 0 || src_len <= 0) return;
-    float ratio = (float)src_len / (float)dest_len;
-    for (int i = 0; i < dest_len; i++) {
-        float pos = i * ratio;
-        int idx = (int)pos;
-        float frac = pos - idx;
-        if (idx + 1 < src_len) {
-            dest[i] = src[idx] * (1.0f - frac) + src[idx + 1] * frac;
-        } else {
-            dest[i] = src[idx];
-        }
-    }
-}
-
-// クロスフェード接続
-void apply_crossfade(float* out_buffer, int current_pos, float* new_sample, int sample_len, int fade_samples) {
-    for (int i = 0; i < fade_samples; i++) {
-        float f_in = (float)i / (float)fade_samples;
-        float f_out = 1.0f - f_in;
-        out_buffer[current_pos + i] = (out_buffer[current_pos + i] * f_out) + (new_sample[i] * f_in);
-    }
-    if (sample_len > fade_samples) {
-        memcpy(&out_buffer[current_pos + fade_samples], &new_sample[fade_samples], sizeof(float) * (sample_len - fade_samples));
-    }
-}
