@@ -663,15 +663,32 @@ def export_to_wav(self, notes, filename="output/result.wav"):
 
 
 def on_export_button_clicked(self):
-    # タイムライン上の全ノートを取得
+    # 1. タイムラインにノートがあるか確認
     notes = self.timeline_widget.get_all_notes()
-    
     if not notes:
-        print("ノートがありません")
+        QMessageBox.warning(self, "エラー", "書き出すノートがありません。")
         return
 
-    # 保存先を指定して実行
-    output_file = "output/render_result.wav"
-    self.engine_wrapper.export_wav(notes, output_file)
-    print(f"書き出し成功: {output_file}")
+    # 2. ファイル保存ダイアログを表示
+    # 第2引数はタイトル、第3引数はデフォルトのパス、第4引数はファイル形式のフィルタ
+    default_path = os.path.expanduser("~/Documents/output.wav") # 初期値を書類フォルダに
+    file_path, _ = QFileDialog.getSaveFileName(
+        self, 
+        "音声ファイルを保存", 
+        default_path, 
+        "WAV Files (*.wav);;All Files (*)"
+    )
 
+    # 3. ユーザーがキャンセルせずにパスを選択した場合のみ実行
+    if file_path:
+        try:
+            # エンジンに選択されたパスを渡してレンダリング
+            self.engine_wrapper.export_wav(notes, file_path)
+            
+            # 完了メッセージ
+            QMessageBox.information(self, "完了", f"書き出しが完了しました：\n{file_path}")
+            
+            # 保存したフォルダを自動で開く（オプション）
+            # os.startfile(os.path.dirname(file_path)) # Windowsの場合
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"書き出し中にエラーが発生しました：\n{str(e)}")
